@@ -1,0 +1,254 @@
+"""Training script for language models."""
+
+import os
+from pathlib import Path
+from typing import Optional
+
+import torch
+import typer
+import yaml
+from lightning.pytorch import Trainer, seed_everything
+from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint, RichProgressBar
+from lightning.pytorch.loggers import TensorBoardLogger
+from rich.console import Console
+from transformers import AutoTokenizer
+
+from src.data import DataModule
+from src.model import LanguageModel
+
+app = typer.Typer(help="Train language models with PyTorch Lightning.")
+console = Console()
+
+
+def load_config(config_path: Path) -> dict:
+    """Load and validate configuration from YAML file."""
+    with open(config_path) as f:
+        config = yaml.safe_load(f)
+    return config
+
+
+def load_model_config(config_path: Path) -> dict:
+    """Load model architecture configuration."""
+    with open(config_path) as f:
+        model_config = yaml.safe_load(f)
+    return model_config
+
+
+def setup_callbacks(config: dict, output_dir: Path) -> list:
+    """Set up training callbacks."""
+    callbacks = [
+        RichProgressBar(),
+        LearningRateMonitor(logging_interval="step"),
+    ]
+
+    ckpt_config = config.get("checkpoint", {})
+    checkpoint_dir = output_dir / ckpt_config.get("save_dir", ".checkpoints")
+
+    callbacks.append(
+        ModelCheckpoint(
+            dirpath=checkpoint_dir,
+            filename="step{step}",
+            every_n_train_steps=ckpt_config.get("save_every_n_steps", 5000),
+            save_top_k=ckpt_config.get("save_top_k", 3),
+            save_last=ckpt_config.get("save_last", True),
+            monitor="val/loss",
+            mode="min",
+        )
+    )
+
+    return callbacks
+
+
+def setup_trainer(config: dict, output_dir: Path) -> Trainer:
+    """Set up Lightning Trainer."""
+    training_config = config.get("training", {})
+    hardware_config = config.get("hardware", {})
+    logging_config = config.get("logging", {})
+
+    callbacks = setup_callbacks(config, output_dir)
+    logger = TensorBoardLogger(save_dir=output_dir, name="logs")
+
+    trainer = Trainer(
+        # Training
+        max_steps=training_config.get("max_steps", 50000),
+        gradient_clip_val=training_config.get("max_grad_norm", 1.0),
+        accumulate_grad_batches=training_config.get("gradient_accumulation", 1),
+        # Hardware
+        accelerator=hardware_config.get("accelerator", "auto"),
+        devices=hardware_config.get("devices", "auto"),
+        precision=hardware_config.get("precision", "bf16-mixed"),
+        strategy=hardware_config.get("strategy", "auto"),
+        # Logging
+        log_every_n_steps=logging_config.get("log_every_n_steps", 50),
+        val_check_interval=logging_config.get("val_check_interval", 1000),
+        # Callbacks
+        callbacks=callbacks,
+        logger=logger,
+        # Misc
+        enable_checkpointing=True,
+        enable_progress_bar=True,
+        enable_model_summary=True,
+    )
+
+    return trainer
+
+
+@app.command()
+def train(
+    config_path: Path = typer.Argument(..., help="Path to training config YAML"),
+    resume: Optional[Path] = typer.Option(None, "--resume", "-r", help="Resume from checkpoint"),
+) -> None:
+    """Train a language model."""
+    # Load configuration
+    config = load_config(config_path)
+    console.print(f"[green]Loaded config from {config_path}[/green]")
+
+    # Set seed
+    seed = config.get("training", {}).get("seed", 42)
+    seed_everything(seed, workers=True)
+    console.print(f"[blue]Random seed: {seed}[/blue]")
+
+    # Set up paths
+    paths_config = config.get("paths", {})
+    output_dir = Path(paths_config.get("output_dir", "./outputs"))
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Save config to output dir
+    with open(output_dir / "config.yaml", "w") as f:
+        yaml.dump(config, f)
+
+    # Load tokenizer to get vocab size
+    tokenizer_path = paths_config.get("tokenizer")
+    if tokenizer_path:
+        tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
+        vocab_size = len(tokenizer)
+        eos_token_id = tokenizer.eos_token_id or 0
+        console.print(f"[blue]Tokenizer vocab size: {vocab_size}[/blue]")
+    else:
+        # Default vocab size if no tokenizer provided
+        vocab_size = 32000
+        eos_token_id = 0
+        console.print("[yellow]Warning: No tokenizer path provided, using default vocab_size=32000[/yellow]")
+
+    # Load model config
+    model_config_path = Path(config.get("model", {}).get("config_path", "configs/models/me57M-tied.yaml"))
+    if not model_config_path.is_absolute():
+        model_config_path = config_path.parent / model_config_path
+
+    model_arch_config = load_model_config(model_config_path)
+    model_arch_config["vocab_size"] = vocab_size
+    model_arch_config["max_position_embeddings"] = config.get("training", {}).get("sequence_length", 2048)
+
+    console.print(f"[blue]Model: {model_arch_config.get('name', 'unknown')}[/blue]")
+
+    # Create DataModule
+    training_config = config.get("training", {})
+    data_module = DataModule(
+        train_data_path=paths_config.get("train_data"),
+        val_data_path=paths_config.get("val_data"),
+        test_data_path=paths_config.get("test_data"),
+        seq_len=training_config.get("sequence_length", 2048),
+        eos_token_id=eos_token_id,
+        shuffle_seed=seed,
+        batch_size=training_config.get("batch_size", 32),
+        eval_batch_size=training_config.get("eval_batch_size"),
+        num_workers=config.get("hardware", {}).get("num_workers", 4),
+    )
+
+    # Create model
+    model_settings = config.get("model", {})
+    optim_config = {
+        "learning_rate": training_config.get("learning_rate", 3e-4),
+        "weight_decay": training_config.get("weight_decay", 0.1),
+        "beta1": training_config.get("beta1", 0.9),
+        "beta2": training_config.get("beta2", 0.95),
+        "warmup_steps": training_config.get("warmup_steps", 2000),
+        "decay_steps": training_config.get("decay_steps", 10000),
+        "min_lr_ratio": training_config.get("min_lr_ratio", 0.1),
+        "z_loss_weight": training_config.get("z_loss_weight"),
+    }
+
+    model = LanguageModel(
+        config=model_arch_config,
+        optim_config=optim_config,
+        use_flash_attention=model_settings.get("use_flash_attention", True),
+        use_liger_kernel=model_settings.get("use_liger_kernel", False),
+        torch_compile=model_settings.get("torch_compile", False),
+    )
+
+    # Create trainer
+    trainer = setup_trainer(config, output_dir)
+
+    # Train
+    console.print("[green]Starting training...[/green]")
+    torch.set_float32_matmul_precision("high")
+
+    trainer.fit(
+        model=model,
+        datamodule=data_module,
+        ckpt_path=str(resume) if resume else None,
+    )
+
+    console.print(f"[green]Training complete! Outputs saved to {output_dir}[/green]")
+
+
+@app.command()
+def validate(
+    config_path: Path = typer.Argument(..., help="Path to training config YAML"),
+    checkpoint: Path = typer.Argument(..., help="Path to checkpoint"),
+) -> None:
+    """Run validation on a trained model."""
+    config = load_config(config_path)
+
+    # Set up paths
+    paths_config = config.get("paths", {})
+
+    # Load tokenizer
+    tokenizer_path = paths_config.get("tokenizer")
+    if tokenizer_path:
+        tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
+        vocab_size = len(tokenizer)
+        eos_token_id = tokenizer.eos_token_id or 0
+    else:
+        vocab_size = 32000
+        eos_token_id = 0
+
+    # Load model config
+    model_config_path = Path(config.get("model", {}).get("config_path", "configs/models/me57M-tied.yaml"))
+    if not model_config_path.is_absolute():
+        model_config_path = config_path.parent / model_config_path
+
+    model_arch_config = load_model_config(model_config_path)
+    model_arch_config["vocab_size"] = vocab_size
+
+    # Create DataModule
+    training_config = config.get("training", {})
+    data_module = DataModule(
+        val_data_path=paths_config.get("val_data"),
+        seq_len=training_config.get("sequence_length", 2048),
+        eos_token_id=eos_token_id,
+        batch_size=training_config.get("batch_size", 32),
+        num_workers=config.get("hardware", {}).get("num_workers", 4),
+    )
+
+    # Load model from checkpoint
+    model = LanguageModel.load_from_checkpoint(
+        checkpoint,
+        config=model_arch_config,
+        use_flash_attention=False,  # Use eager for validation
+    )
+
+    # Create trainer
+    trainer = Trainer(
+        accelerator=config.get("hardware", {}).get("accelerator", "auto"),
+        devices=1,
+        precision=config.get("hardware", {}).get("precision", "bf16-mixed"),
+    )
+
+    # Validate
+    results = trainer.validate(model, datamodule=data_module)
+    console.print(f"[green]Validation results: {results}[/green]")
+
+
+if __name__ == "__main__":
+    app()

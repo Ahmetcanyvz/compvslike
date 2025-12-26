@@ -1,0 +1,16 @@
+# 100M parameter model with untied embeddings (SmolLM2-135M architecture)
+name: me100M
+model_type: llama
+hidden_act: silu
+hidden_size: 576
+intermediate_size: 1536
+num_attention_heads: 9
+num_key_value_heads: 3
+num_hidden_layers: 30
+tie_word_embeddings: false
+initializer_range: 0.041666666666666664
+attention_bias: false
+attention_dropout: 0.0
+mlp_bias: false
+rms_norm_eps: 1.0e-5
+rope_theta: 10000.0

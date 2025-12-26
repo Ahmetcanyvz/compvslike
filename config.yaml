@@ -1,0 +1,58 @@
+# lm-trainer configuration
+
+# Paths
+paths:
+  tokenizer: null  # Path to HuggingFace tokenizer directory
+  train_data: null  # Path to tokenized Arrow dataset (train split)
+  val_data: null    # Path to tokenized Arrow dataset (validation split)
+  test_data: null   # Path to tokenized Arrow dataset (test split, optional)
+  output_dir: ./outputs
+
+# Model configuration
+model:
+  config_path: configs/models/me57M-tied.yaml
+  use_flash_attention: true
+  use_liger_kernel: false
+  torch_compile: false
+
+# Training
+training:
+  seed: 42
+  max_steps: 50000
+  batch_size: 32           # Per-device batch size
+  gradient_accumulation: 1
+  sequence_length: 2048
+
+  # Optimizer
+  learning_rate: 3.0e-4
+  weight_decay: 0.1
+  beta1: 0.9
+  beta2: 0.95
+  max_grad_norm: 1.0
+
+  # Scheduler (warmup-stable-decay)
+  warmup_steps: 2000
+  decay_steps: 10000       # Steps at end for linear decay
+  min_lr_ratio: 0.1        # Final LR = learning_rate * min_lr_ratio
+
+  # Regularization
+  z_loss_weight: 1.0e-4
+
+# Checkpointing
+checkpoint:
+  save_every_n_steps: 5000
+  save_dir: .checkpoints
+  save_last: true
+  save_top_k: 3            # Keep best k checkpoints by val_loss
+
+# Hardware
+hardware:
+  accelerator: gpu         # gpu, cpu, tpu
+  devices: auto            # Number of devices or 'auto'
+  precision: bf16-mixed    # 32, 16, bf16-mixed
+  strategy: auto           # auto, ddp, fsdp
+
+# Logging
+logging:
+  log_every_n_steps: 50
+  val_check_interval: 1000

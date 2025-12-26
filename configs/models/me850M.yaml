@@ -1,0 +1,16 @@
+# 850M parameter model with untied embeddings
+name: me850M
+model_type: llama
+hidden_act: silu
+hidden_size: 1536
+intermediate_size: 6144
+num_attention_heads: 32
+num_key_value_heads: 4
+num_hidden_layers: 24
+tie_word_embeddings: false
+initializer_range: 0.02
+attention_bias: false
+attention_dropout: 0.0
+mlp_bias: false
+rms_norm_eps: 1.0e-5
+rope_theta: 10000.0

@@ -19,7 +19,7 @@ model:
 training:
   seed: 42
   max_steps: 50000
-  batch_size: 32
+  batch_size: 8
   gradient_accumulation: 1
   sequence_length: 2048
 

@@ -49,7 +49,7 @@ checkpoint:
 hardware:
   accelerator: gpu
   devices: auto
-  precision: bf16-mixed
+  precision: bf16-true
   strategy: auto
 
 # Logging

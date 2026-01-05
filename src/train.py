@@ -55,23 +55,25 @@ class LogToFileCallback(Callback):
 
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
         step = trainer.global_step
-        if step > 0 and step % self.every_n_steps == 0 and step not in self.logged_steps:
-            self.logged_steps.add(step)
+        # Debug: print every 500 steps
+        if step > 0 and step % 500 == 0 and step not in self.logged_steps:
             loss = trainer.callback_metrics.get("train/loss", float("nan"))
-            val_loss = trainer.callback_metrics.get("val/loss", None)
-
             with open(self.log_path, "a") as f:
-                if val_loss is not None:
-                    f.write(f"step={step}, train_loss={float(loss):.4f}, val_loss={float(val_loss):.4f}\n")
-                else:
-                    f.write(f"step={step}, train_loss={float(loss):.4f}\n")
-
-            console.print(f"[yellow]Logged step {step}: loss={float(loss):.4f}[/yellow]")
+                f.write(f"step={step}, train_loss={float(loss):.4f}\n")
+            self.logged_steps.add(step)
 
     def on_train_start(self, trainer, pl_module):
         with open(self.log_path, "w") as f:
             f.write("Training log\n")
             f.write("=" * 50 + "\n")
+
+    def on_validation_end(self, trainer, pl_module):
+        """Also log after each validation."""
+        step = trainer.global_step
+        loss = trainer.callback_metrics.get("train/loss", float("nan"))
+        val_loss = trainer.callback_metrics.get("val/loss", float("nan"))
+        with open(self.log_path, "a") as f:
+            f.write(f"step={step}, train_loss={float(loss):.4f}, val_loss={float(val_loss):.4f}\n")
 
 
 def setup_callbacks(config: dict, output_dir: Path, max_steps: int) -> list:

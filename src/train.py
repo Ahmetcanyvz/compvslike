@@ -49,31 +49,35 @@ class LogToFileCallback(Callback):
     """Log loss to a text file at regular intervals."""
 
     def __init__(self, log_path: Path, every_n_steps: int = 1000):
-        self.log_path = log_path
+        self.log_path = Path(log_path)
         self.every_n_steps = every_n_steps
         self.logged_steps = set()
+        print(f"[LogToFileCallback] Will write to: {self.log_path}")
+
+    def _write_log(self, msg: str):
+        """Write message to log file with flush."""
+        with open(self.log_path, "a") as f:
+            f.write(msg + "\n")
+            f.flush()
+        print(f"[LOG] {msg}")
 
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
         step = trainer.global_step
-        # Debug: print every 500 steps
-        if step > 0 and step % 500 == 0 and step not in self.logged_steps:
+        if step > 0 and step % self.every_n_steps == 0 and step not in self.logged_steps:
             loss = trainer.callback_metrics.get("train/loss", float("nan"))
-            with open(self.log_path, "a") as f:
-                f.write(f"step={step}, train_loss={float(loss):.4f}\n")
+            self._write_log(f"step={step}, train_loss={float(loss):.4f}")
             self.logged_steps.add(step)
 
     def on_train_start(self, trainer, pl_module):
-        with open(self.log_path, "w") as f:
-            f.write("Training log\n")
-            f.write("=" * 50 + "\n")
+        self._write_log("Training log")
+        self._write_log("=" * 50)
 
     def on_validation_end(self, trainer, pl_module):
         """Also log after each validation."""
         step = trainer.global_step
         loss = trainer.callback_metrics.get("train/loss", float("nan"))
         val_loss = trainer.callback_metrics.get("val/loss", float("nan"))
-        with open(self.log_path, "a") as f:
-            f.write(f"step={step}, train_loss={float(loss):.4f}, val_loss={float(val_loss):.4f}\n")
+        self._write_log(f"[VAL] step={step}, train_loss={float(loss):.4f}, val_loss={float(val_loss):.4f}")
 
 
 def setup_callbacks(config: dict, output_dir: Path, max_steps: int) -> list:

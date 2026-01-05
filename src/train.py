@@ -62,18 +62,26 @@ class LogToFileCallback(Callback):
         print(f"[LOG] {msg}")
 
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
-        step = trainer.global_step  # optimizer steps
+        # Log every N optimizer steps
+        step = trainer.global_step
         if step > 0 and step % self.every_n_steps == 0 and step not in self.logged_steps:
             loss = trainer.callback_metrics.get("train/loss", float("nan"))
-            self._write_log(f"step={step}, batch={batch_idx}, train_loss={float(loss):.4f}")
+            self._write_log(f"step={step}, train_loss={float(loss):.4f}")
             self.logged_steps.add(step)
+
+    def on_train_epoch_end(self, trainer, pl_module):
+        """Log at end of each epoch."""
+        step = trainer.global_step
+        loss = trainer.callback_metrics.get("train/loss", float("nan"))
+        self._write_log(f"[EPOCH END] step={step}, train_loss={float(loss):.4f}")
 
     def on_train_start(self, trainer, pl_module):
         self._write_log("Training log")
         self._write_log("=" * 50)
+        self._write_log(f"Logging every {self.every_n_steps} optimizer steps")
 
     def on_validation_end(self, trainer, pl_module):
-        """Also log after each validation."""
+        """Log after each validation."""
         step = trainer.global_step
         loss = trainer.callback_metrics.get("train/loss", float("nan"))
         val_loss = trainer.callback_metrics.get("val/loss", float("nan"))

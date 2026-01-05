@@ -8,7 +8,7 @@ import torch
 import typer
 import yaml
 from lightning.pytorch import Trainer, seed_everything
-from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint, RichProgressBar
+from lightning.pytorch.callbacks import Callback, LearningRateMonitor, ModelCheckpoint, RichProgressBar
 from lightning.pytorch.loggers import TensorBoardLogger
 from rich.console import Console
 from transformers import AutoTokenizer
@@ -34,11 +34,23 @@ def load_model_config(config_path: Path) -> dict:
     return model_config
 
 
-def setup_callbacks(config: dict, output_dir: Path) -> list:
+class StopAtStepsCallback(Callback):
+    """Stop training after a fixed number of optimizer steps."""
+
+    def __init__(self, max_steps: int):
+        self.max_steps = max_steps
+
+    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
+        if trainer.global_step >= self.max_steps:
+            trainer.should_stop = True
+
+
+def setup_callbacks(config: dict, output_dir: Path, max_steps: int) -> list:
     """Set up training callbacks."""
     callbacks = [
         RichProgressBar(),
         LearningRateMonitor(logging_interval="step"),
+        StopAtStepsCallback(max_steps),
     ]
 
     ckpt_config = config.get("checkpoint", {})
@@ -65,14 +77,17 @@ def setup_trainer(config: dict, output_dir: Path) -> Trainer:
     hardware_config = config.get("hardware", {})
     logging_config = config.get("logging", {})
 
-    callbacks = setup_callbacks(config, output_dir)
+    grad_accum = training_config.get("gradient_accumulation", 1)
+    max_steps = training_config.get("max_steps", 50000)
+
+    callbacks = setup_callbacks(config, output_dir, max_steps)
     logger = TensorBoardLogger(save_dir=output_dir, name="logs")
 
     trainer = Trainer(
         # Training
-        max_steps=training_config.get("max_steps", 50000),
+        max_steps=max_steps,
         gradient_clip_val=training_config.get("max_grad_norm", 1.0),
-        accumulate_grad_batches=training_config.get("gradient_accumulation", 1),
+        accumulate_grad_batches=grad_accum,
         # Hardware
         accelerator=hardware_config.get("accelerator", "auto"),
         devices=hardware_config.get("devices", "auto"),

@@ -153,8 +153,19 @@ def train(
 
     # Set up paths
     paths_config = config.get("paths", {})
-    output_dir = Path(paths_config.get("output_dir", "./outputs"))
+    training_config = config.get("training", {})
+
+    # Create descriptive output folder name
+    base_output_dir = Path(paths_config.get("output_dir", "./outputs"))
+    tokenizer_path = paths_config.get("tokenizer", "unknown")
+    tokenizer_name = Path(tokenizer_path).name if tokenizer_path else "unknown"
+    model_name = config.get("model", {}).get("config_path", "model").split("/")[-1].replace(".yaml", "")
+    max_steps = training_config.get("max_steps", 50000)
+
+    run_name = f"{model_name}_{tokenizer_name}_{max_steps}steps"
+    output_dir = base_output_dir / run_name
     output_dir.mkdir(parents=True, exist_ok=True)
+    console.print(f"[blue]Output dir: {output_dir}[/blue]")
 
     # Save config to output dir
     with open(output_dir / "config.yaml", "w") as f:
@@ -185,7 +196,6 @@ def train(
     console.print(f"[blue]Model: {model_arch_config.get('name', 'unknown')}[/blue]")
 
     # Create DataModule
-    training_config = config.get("training", {})
     data_module = DataModule(
         train_data_path=paths_config.get("train_data"),
         val_data_path=paths_config.get("val_data"),

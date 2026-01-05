@@ -62,10 +62,10 @@ class LogToFileCallback(Callback):
         print(f"[LOG] {msg}")
 
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
-        step = trainer.global_step
+        step = trainer.global_step  # optimizer steps
         if step > 0 and step % self.every_n_steps == 0 and step not in self.logged_steps:
             loss = trainer.callback_metrics.get("train/loss", float("nan"))
-            self._write_log(f"step={step}, train_loss={float(loss):.4f}")
+            self._write_log(f"step={step}, batch={batch_idx}, train_loss={float(loss):.4f}")
             self.logged_steps.add(step)
 
     def on_train_start(self, trainer, pl_module):
@@ -86,7 +86,7 @@ def setup_callbacks(config: dict, output_dir: Path, max_steps: int) -> list:
         RichProgressBar(),
         LearningRateMonitor(logging_interval="step"),
         StopAtStepsCallback(max_steps),
-        LogToFileCallback(output_dir / "training_log.txt", every_n_steps=1000),
+        LogToFileCallback(output_dir / "training_log.txt", every_n_steps=100),  # Every 100 optimizer steps
     ]
 
     ckpt_config = config.get("checkpoint", {})

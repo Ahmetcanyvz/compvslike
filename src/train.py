@@ -94,7 +94,7 @@ def setup_callbacks(config: dict, output_dir: Path, max_steps: int) -> list:
         RichProgressBar(),
         LearningRateMonitor(logging_interval="step"),
         StopAtStepsCallback(max_steps),
-        LogToFileCallback(output_dir / "training_log.txt", every_n_steps=100),  # Every 100 optimizer steps
+        LogToFileCallback(output_dir / "training_log.txt", every_n_steps=1000),  # Every 1000 optimizer steps
     ]
 
     ckpt_config = config.get("checkpoint", {})

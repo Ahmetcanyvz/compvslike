@@ -35,13 +35,14 @@ def load_model_config(config_path: Path) -> dict:
 
 
 class StopAtStepsCallback(Callback):
-    """Stop training after a fixed number of optimizer steps."""
+    """Stop training after a fixed number of steps (micro-batches)."""
 
     def __init__(self, max_steps: int):
         self.max_steps = max_steps
 
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
-        if trainer.global_step >= self.max_steps:
+        # batch_idx counts micro-batches
+        if batch_idx + 1 >= self.max_steps:
             trainer.should_stop = True
 
 
@@ -51,20 +52,24 @@ class LogToFileCallback(Callback):
     def __init__(self, log_path: Path, every_n_steps: int = 10000):
         self.log_path = log_path
         self.every_n_steps = every_n_steps
-        self.last_logged_step = -1
+        self.logged_steps = set()
 
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
-        step = trainer.global_step
-        if step > 0 and step % self.every_n_steps == 0 and step != self.last_logged_step:
-            self.last_logged_step = step
-            loss = trainer.callback_metrics.get("train/loss", 0)
+        # batch_idx counts micro-batches, use it for reliable logging
+        step = batch_idx + 1
+        if step % self.every_n_steps == 0 and step not in self.logged_steps:
+            self.logged_steps.add(step)
+            loss = trainer.callback_metrics.get("train/loss", float("nan"))
             val_loss = trainer.callback_metrics.get("val/loss", None)
 
             with open(self.log_path, "a") as f:
                 if val_loss is not None:
-                    f.write(f"step={step}, train_loss={loss:.4f}, val_loss={val_loss:.4f}\n")
+                    f.write(f"step={step}, train_loss={float(loss):.4f}, val_loss={float(val_loss):.4f}\n")
                 else:
-                    f.write(f"step={step}, train_loss={loss:.4f}\n")
+                    f.write(f"step={step}, train_loss={float(loss):.4f}\n")
+
+            # Also print to console
+            console.print(f"[yellow]Logged step {step}: loss={float(loss):.4f}[/yellow]")
 
     def on_train_start(self, trainer, pl_module):
         with open(self.log_path, "w") as f:
@@ -72,27 +77,36 @@ class LogToFileCallback(Callback):
             f.write("=" * 50 + "\n")
 
 
-def setup_callbacks(config: dict, output_dir: Path, max_steps: int) -> list:
-    """Set up training callbacks."""
+def setup_callbacks(config: dict, output_dir: Path, max_steps: int, grad_accum: int) -> list:
+    """Set up training callbacks.
+
+    Args:
+        max_steps: Number of optimizer steps (from config)
+        grad_accum: Gradient accumulation factor
+    """
+    # Convert optimizer steps to micro-batches
+    max_micro_batches = max_steps * grad_accum
+    log_every_micro_batches = 10000 * grad_accum  # Log every 10k optimizer steps
+
     callbacks = [
         RichProgressBar(),
         LearningRateMonitor(logging_interval="step"),
-        StopAtStepsCallback(max_steps),
-        LogToFileCallback(output_dir / "training_log.txt", every_n_steps=10000),
+        StopAtStepsCallback(max_micro_batches),
+        LogToFileCallback(output_dir / "training_log.txt", every_n_steps=log_every_micro_batches),
     ]
 
     ckpt_config = config.get("checkpoint", {})
     checkpoint_dir = output_dir / ckpt_config.get("save_dir", ".checkpoints")
+    save_every_optimizer_steps = ckpt_config.get("save_every_n_steps", 5000)
+    save_every_micro_batches = save_every_optimizer_steps * grad_accum
 
     callbacks.append(
         ModelCheckpoint(
             dirpath=checkpoint_dir,
             filename="step{step}",
-            every_n_train_steps=ckpt_config.get("save_every_n_steps", 5000),
-            save_top_k=ckpt_config.get("save_top_k", 3),
+            every_n_train_steps=save_every_micro_batches,
+            save_top_k=-1,  # Save all checkpoints at specified intervals
             save_last=ckpt_config.get("save_last", True),
-            monitor="val/loss",
-            mode="min",
         )
     )
 
@@ -108,7 +122,7 @@ def setup_trainer(config: dict, output_dir: Path) -> Trainer:
     grad_accum = training_config.get("gradient_accumulation", 1)
     max_steps = training_config.get("max_steps", 50000)
 
-    callbacks = setup_callbacks(config, output_dir, max_steps)
+    callbacks = setup_callbacks(config, output_dir, max_steps, grad_accum)
     logger = TensorBoardLogger(save_dir=output_dir, name="logs")
 
     trainer = Trainer(

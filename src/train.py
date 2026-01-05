@@ -86,7 +86,7 @@ def setup_callbacks(config: dict, output_dir: Path, max_steps: int, grad_accum: 
     """
     # Convert optimizer steps to micro-batches
     max_micro_batches = max_steps * grad_accum
-    log_every_micro_batches = 10000 * grad_accum  # Log every 10k optimizer steps
+    log_every_micro_batches = 1000 * grad_accum  # Log every 1k optimizer steps
 
     callbacks = [
         RichProgressBar(),

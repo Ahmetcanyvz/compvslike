@@ -55,4 +55,4 @@ hardware:
 # Logging (in batches, multiply by grad_accum for optimizer steps)
 logging:
   log_every_n_steps: 16000  # 1000 optimizer steps × 16
-  val_check_interval: 16000  # 1000 optimizer steps × 16
+  val_check_interval: 80000  # 5000 optimizer steps × 16

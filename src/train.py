@@ -45,12 +45,40 @@ class StopAtStepsCallback(Callback):
             trainer.should_stop = True
 
 
+class LogToFileCallback(Callback):
+    """Log loss to a text file at regular intervals."""
+
+    def __init__(self, log_path: Path, every_n_steps: int = 10000):
+        self.log_path = log_path
+        self.every_n_steps = every_n_steps
+        self.last_logged_step = -1
+
+    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
+        step = trainer.global_step
+        if step > 0 and step % self.every_n_steps == 0 and step != self.last_logged_step:
+            self.last_logged_step = step
+            loss = trainer.callback_metrics.get("train/loss", 0)
+            val_loss = trainer.callback_metrics.get("val/loss", None)
+
+            with open(self.log_path, "a") as f:
+                if val_loss is not None:
+                    f.write(f"step={step}, train_loss={loss:.4f}, val_loss={val_loss:.4f}\n")
+                else:
+                    f.write(f"step={step}, train_loss={loss:.4f}\n")
+
+    def on_train_start(self, trainer, pl_module):
+        with open(self.log_path, "w") as f:
+            f.write("Training log\n")
+            f.write("=" * 50 + "\n")
+
+
 def setup_callbacks(config: dict, output_dir: Path, max_steps: int) -> list:
     """Set up training callbacks."""
     callbacks = [
         RichProgressBar(),
         LearningRateMonitor(logging_interval="step"),
         StopAtStepsCallback(max_steps),
+        LogToFileCallback(output_dir / "training_log.txt", every_n_steps=10000),
     ]
 
     ckpt_config = config.get("checkpoint", {})

@@ -1,6 +1,7 @@
 """Training script for language models."""
 
 import os
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -69,12 +70,12 @@ class LogToFileCallback(Callback):
 
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
         self.total_batches += 1
-
-        # DEBUG: print every 50 calls to see counters
-        if self.total_batches % 50 == 0:
-            print(f"[DEBUG] total_batches={self.total_batches}, batch_idx={batch_idx}, global_step={trainer.global_step}, grad_accum={self.grad_accum}")
-
         step = self.total_batches // self.grad_accum
+
+        # DEBUG: print to stderr when near step 100
+        if step >= 99 and step <= 101:
+            print(f"[STDERR DEBUG] step={step}, every_n={self.every_n_steps}, in_logged={step in self.logged_steps}, check={step % self.every_n_steps == 0}", file=sys.stderr)
+
         if step > 0 and step % self.every_n_steps == 0 and step not in self.logged_steps:
             loss = trainer.callback_metrics.get("train/loss", float("nan"))
             self._write_log(f"step={step}, train_loss={float(loss):.4f}")

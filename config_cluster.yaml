@@ -55,4 +55,4 @@ hardware:
 logging:
   log_every_n_steps: 50  # TensorBoard logging interval
   log_loss_every_n_steps: 10  # TEST: was 1000 - train loss to file
-  val_check_interval: 20  # TEST: was 5000
+  val_check_interval: 1000

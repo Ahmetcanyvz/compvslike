@@ -156,10 +156,6 @@ def setup_trainer(config: dict, output_dir: Path) -> Trainer:
     callbacks = setup_callbacks(config, output_dir, max_steps, grad_accum)
     logger = TensorBoardLogger(save_dir=output_dir, name="logs")
 
-    # Convert val_check_interval from optimizer steps to batches
-    val_check_interval_steps = logging_config.get("val_check_interval", 1000)
-    val_check_interval_batches = val_check_interval_steps * grad_accum
-
     trainer = Trainer(
         # Training
         max_steps=max_steps,
@@ -172,7 +168,7 @@ def setup_trainer(config: dict, output_dir: Path) -> Trainer:
         strategy=hardware_config.get("strategy", "auto"),
         # Logging
         log_every_n_steps=logging_config.get("log_every_n_steps", 50),
-        val_check_interval=val_check_interval_batches,
+        check_val_every_n_epoch=1,  # Validate every epoch
         # Callbacks
         callbacks=callbacks,
         logger=logger,

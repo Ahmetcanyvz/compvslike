@@ -55,4 +55,3 @@ hardware:
 logging:
   log_every_n_steps: 50  # TensorBoard logging interval
   log_loss_every_n_steps: 1000
-  val_check_interval: 10000  # in optimizer steps (auto-multiplied by grad_accum)

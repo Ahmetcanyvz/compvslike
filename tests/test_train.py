@@ -296,7 +296,8 @@ class TestTrainingIntegration:
 
         class LossTracker(Callback):
             def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
-                losses.append(outputs.item())
+                loss = outputs["loss"] if isinstance(outputs, dict) else outputs
+                losses.append(loss.item())
 
         trainer = Trainer(
             max_steps=10,

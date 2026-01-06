@@ -65,9 +65,15 @@ class LogToFileCallback(Callback):
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
         step = trainer.global_step
 
-        if step > 0 and step % self.every_n_steps == 0 and step not in self.logged_steps:
-            loss = trainer.callback_metrics.get("train/loss", float("nan"))
-            self._write_log(f"step={step}, train_loss={float(loss):.4f}")
+        # DEBUG: Write every new step to debug file
+        if step not in self.logged_steps:
+            debug_path = self.log_path.parent / "debug_steps.txt"
+            with open(debug_path, "a") as f:
+                f.write(f"step={step}, batch_idx={batch_idx}\n")
+
+            if step > 0 and step % self.every_n_steps == 0:
+                loss = trainer.callback_metrics.get("train/loss", float("nan"))
+                self._write_log(f"step={step}, train_loss={float(loss):.4f}")
             self.logged_steps.add(step)
 
     def on_train_start(self, trainer, pl_module):

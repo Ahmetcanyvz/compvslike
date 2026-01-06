@@ -1,16 +1,20 @@
 """Integration tests for training."""
 
 import tempfile
-from pathlib import Path
+from pathlib import Path, PosixPath, WindowsPath
 from unittest.mock import MagicMock
 
 import pytest
 import torch
 import yaml
 from lightning.pytorch import Trainer
+from lightning.pytorch.callbacks import Callback
 
 from src.data import DataModule
 from src.model import LanguageModel
+
+# Allow Path types in checkpoints for PyTorch 2.6+ (weights_only=True by default)
+torch.serialization.add_safe_globals([Path, PosixPath, WindowsPath])
 
 
 class TestTrainingIntegration:
@@ -290,7 +294,7 @@ class TestTrainingIntegration:
         # Track losses
         losses = []
 
-        class LossTracker:
+        class LossTracker(Callback):
             def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
                 losses.append(outputs.item())
 

@@ -47,7 +47,7 @@ checkpoint:
 # Hardware
 hardware:
   accelerator: gpu
-  devices: auto
+  devices: 1
   precision: bf16-true
   strategy: auto
 

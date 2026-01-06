@@ -8,7 +8,7 @@ import torch
 import typer
 import yaml
 from lightning.pytorch import Trainer, seed_everything
-from lightning.pytorch.callbacks import Callback, LearningRateMonitor, ModelCheckpoint, RichProgressBar
+from lightning.pytorch.callbacks import Callback, LearningRateMonitor, RichProgressBar
 from lightning.pytorch.loggers import TensorBoardLogger
 from rich.console import Console
 from transformers import AutoTokenizer
@@ -37,11 +37,13 @@ def load_model_config(config_path: Path) -> dict:
 class StopAtStepsCallback(Callback):
     """Stop training after a fixed number of optimizer steps."""
 
-    def __init__(self, max_steps: int):
+    def __init__(self, max_steps: int, grad_accum: int = 1):
         self.max_steps = max_steps
+        self.grad_accum = grad_accum
 
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
-        if trainer.global_step >= self.max_steps:
+        optimizer_step = (batch_idx + 1) // self.grad_accum
+        if optimizer_step >= self.max_steps:
             trainer.should_stop = True
 
 
@@ -84,27 +86,52 @@ class LogToFileCallback(Callback):
         self._write_log(f"[VAL] step={step}, train_loss={float(loss):.4f}, val_loss={float(val_loss):.4f}")
 
 
+class CheckpointAtStepsCallback(Callback):
+    """Save checkpoints at specific optimizer steps."""
+
+    def __init__(self, checkpoint_dir: Path, every_n_steps: int, grad_accum: int = 1, save_last: bool = True):
+        self.checkpoint_dir = Path(checkpoint_dir)
+        self.every_n_steps = every_n_steps
+        self.grad_accum = grad_accum
+        self.save_last = save_last
+        self.saved_steps = set()
+        self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        print(f"[CheckpointAtStepsCallback] Will save to: {self.checkpoint_dir} every {every_n_steps} optimizer steps")
+
+    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
+        optimizer_step = (batch_idx + 1) // self.grad_accum
+        if optimizer_step > 0 and optimizer_step % self.every_n_steps == 0 and optimizer_step not in self.saved_steps:
+            self.saved_steps.add(optimizer_step)
+            path = self.checkpoint_dir / f"step{optimizer_step}.ckpt"
+            trainer.save_checkpoint(str(path))
+            print(f"[CKPT] Saved checkpoint at optimizer step {optimizer_step}: {path}")
+
+    def on_train_end(self, trainer, pl_module):
+        """Save final checkpoint."""
+        if self.save_last:
+            path = self.checkpoint_dir / "last.ckpt"
+            trainer.save_checkpoint(str(path))
+            print(f"[CKPT] Saved final checkpoint: {path}")
+
+
 def setup_callbacks(config: dict, output_dir: Path, max_steps: int, grad_accum: int) -> list:
     """Set up training callbacks."""
+    ckpt_config = config.get("checkpoint", {})
+    checkpoint_dir = output_dir / ckpt_config.get("save_dir", ".checkpoints")
+    save_every_n_steps = ckpt_config.get("save_every_n_steps", 5000)
+
     callbacks = [
         RichProgressBar(),
         LearningRateMonitor(logging_interval="step"),
-        StopAtStepsCallback(max_steps),
+        StopAtStepsCallback(max_steps, grad_accum),
         LogToFileCallback(output_dir / "training_log.txt", every_n_steps=1000, grad_accum=grad_accum),
-    ]
-
-    ckpt_config = config.get("checkpoint", {})
-    checkpoint_dir = output_dir / ckpt_config.get("save_dir", ".checkpoints")
-
-    callbacks.append(
-        ModelCheckpoint(
-            dirpath=checkpoint_dir,
-            filename="step{step}",
-            every_n_train_steps=ckpt_config.get("save_every_n_steps", 5000),
-            save_top_k=-1,  # Save all checkpoints at specified intervals
+        CheckpointAtStepsCallback(
+            checkpoint_dir=checkpoint_dir,
+            every_n_steps=save_every_n_steps,
+            grad_accum=grad_accum,
             save_last=ckpt_config.get("save_last", True),
-        )
-    )
+        ),
+    ]
 
     return callbacks
 

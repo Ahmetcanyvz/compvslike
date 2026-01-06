@@ -18,7 +18,7 @@ model:
 # Training
 training:
   seed: 42
-  max_steps: 500  # TEST: was 50000
+  max_steps: 50000
   batch_size: 8
   gradient_accumulation: 16
   sequence_length: 2048
@@ -40,7 +40,7 @@ training:
 
 # Checkpointing (in optimizer steps - handled by custom callback)
 checkpoint:
-  save_every_n_steps: 20  # TEST: was 5000
+  save_every_n_steps: 5000
   save_dir: .checkpoints
   save_last: true
 
@@ -54,5 +54,5 @@ hardware:
 # Logging
 logging:
   log_every_n_steps: 50  # TensorBoard logging interval
-  log_loss_every_n_steps: 10  # TEST: was 1000 - train loss to file
-  val_check_interval: 1000
+  log_loss_every_n_steps: 1000
+  val_check_interval: 10000  # in optimizer steps (auto-multiplied by grad_accum)

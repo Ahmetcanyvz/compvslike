@@ -70,7 +70,8 @@ class LogToFileCallback(Callback):
         if step > 0 and step % self.every_n_steps == 0 and step not in self.logged_steps:
             self.logged_steps.add(step)
             loss = float(trainer.callback_metrics.get("train/loss", float("nan")))
-            msg = f"step={step}, loss={loss:.4f}"
+            lr = trainer.optimizers[0].param_groups[0]["lr"]
+            msg = f"step={step}, loss={loss:.4f}, lr={lr:.2e}"
             with open(self.log_path, "a") as f:
                 f.write(msg + "\n")
             print(f"[LOG] {msg}", file=sys.stderr)

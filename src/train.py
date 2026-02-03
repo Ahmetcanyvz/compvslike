@@ -186,14 +186,16 @@ def setup_trainer(config: dict, output_dir: Path) -> Trainer:
 def train(
     config_path: Path = typer.Argument(..., help="Path to training config YAML"),
     resume: Optional[Path] = typer.Option(None, "--resume", "-r", help="Resume from checkpoint"),
+    seed: Optional[int] = typer.Option(None, "--seed", "-s", help="Override seed from config"),
 ) -> None:
     """Train a language model."""
     # Load configuration
     config = load_config(config_path)
     console.print(f"[green]Loaded config from {config_path}[/green]")
 
-    # Set seed
-    seed = config.get("training", {}).get("seed", 42)
+    # Set seed (CLI overrides config)
+    if seed is None:
+        seed = config.get("training", {}).get("seed", 42)
     seed_everything(seed, workers=True)
     console.print(f"[blue]Random seed: {seed}[/blue]")
 
@@ -208,7 +210,7 @@ def train(
     model_name = config.get("model", {}).get("config_path", "model").split("/")[-1].replace(".yaml", "")
     max_steps = training_config.get("max_steps", 50000)
 
-    run_name = f"{model_name}_{tokenizer_name}_{max_steps}steps"
+    run_name = f"{model_name}_{tokenizer_name}_{max_steps}steps_seed{seed}"
     output_dir = base_output_dir / run_name
     output_dir.mkdir(parents=True, exist_ok=True)
     console.print(f"[blue]Output dir: {output_dir}[/blue]")

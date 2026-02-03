@@ -196,6 +196,7 @@ def train(
     # Set seed (CLI overrides config)
     if seed is None:
         seed = config.get("training", {}).get("seed", 42)
+    config.setdefault("training", {})["seed"] = seed
     seed_everything(seed, workers=True)
     console.print(f"[blue]Random seed: {seed}[/blue]")
 

@@ -64,7 +64,7 @@ for seed_dir in "${SEED_DIRS[@]}"; do
             echo "  [SKIP] BLiMP results already exist: $out_dir/blimp.parquet"
         else
             echo "  [RUN]  BLiMP evaluation..."
-            python -m src.eval_blimp evaluate \
+            uv run python -m src.eval_blimp evaluate \
                 "$checkpoint" \
                 "$tokenizer_path" \
                 -o "$out_dir/blimp.parquet" \
@@ -76,7 +76,7 @@ for seed_dir in "${SEED_DIRS[@]}"; do
             echo "  [SKIP] BPB results already exist: $out_dir/bpb.parquet"
         else
             echo "  [RUN]  BPB evaluation..."
-            python -m src.eval_bpb evaluate \
+            uv run python -m src.eval_bpb evaluate \
                 "$checkpoint" \
                 "$tokenizer_path" \
                 "$RAW_TEST_DATA" \

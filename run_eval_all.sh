@@ -6,6 +6,9 @@ set -euo pipefail
 # Evaluates me57M-tied models across 3 seeds x 3 tokenizer types x 3 vocab sizes
 # =============================================================================
 
+# ── GPU selection ─────────────────────────────────────────────────────────────
+export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}"
+
 # ── Base paths (edit these for your setup) ────────────────────────────────────
 TOKENIZER_BASE="/local/home/ayavuz/data_all/tokenizers"
 RAW_TEST_DATA="/local/home/ayavuz/data_all/data/fineweb-edu-raw/test"

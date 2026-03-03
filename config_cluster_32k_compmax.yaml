@@ -1,0 +1,57 @@
+# Cluster configuration for 32k vocab
+
+# Paths
+paths:
+  tokenizer: /local/home/ayavuz/data_all/tokenizers/compmax-32k
+  train_data: /local/home/ayavuz/data_all/data/fineweb-edu-compmax-32k/train
+  val_data: /local/home/ayavuz/data_all/data/fineweb-edu-compmax-32k/val
+  test_data: /local/home/ayavuz/data_all/data/fineweb-edu-compmax-32k/test
+  output_dir: /local/home/ayavuz/outputs
+
+# Model configuration
+model:
+  config_path: configs/models/me57M-tied.yaml
+  use_flash_attention: true
+  use_liger_kernel: false
+  torch_compile: false
+
+# Training
+training:
+  seed: 42
+  max_steps: 15000
+  batch_size: 8
+  gradient_accumulation: 16
+  sequence_length: 2048
+
+  # Optimizer
+  learning_rate: 6.0e-4
+  weight_decay: 0.1
+  beta1: 0.9
+  beta2: 0.95
+  max_grad_norm: 1.0
+
+  # Scheduler (warmup-stable-decay)
+  warmup_steps: 2000
+  decay_steps: 2000
+  min_lr_ratio: 0.01
+
+  # Regularization
+  z_loss_weight: 1.0e-4
+
+# Checkpointing (in optimizer steps - handled by custom callback)
+checkpoint:
+  save_every_n_steps: 5000
+  save_dir: .checkpoints
+  save_last: true
+
+# Hardware
+hardware:
+  accelerator: gpu
+  devices: 1
+  precision: bf16-true
+  strategy: auto
+
+# Logging
+logging:
+  log_every_n_steps: 50  # TensorBoard logging interval
+  log_loss_every_n_steps: 1000

@@ -130,7 +130,7 @@ def evaluate(
     with torch.inference_mode():
         for task_name in tqdm(selected_tasks, desc="Tasks"):
             try:
-                dataset = load_dataset("blimp", task_name, split="train", trust_remote_code=True)
+                dataset = load_dataset("blimp", task_name, split="train")
             except Exception as e:
                 console.print(f"[yellow]Warning: Could not load task {task_name}: {e}[/yellow]")
                 continue

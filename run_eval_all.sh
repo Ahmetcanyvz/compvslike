@@ -15,23 +15,24 @@ RAW_TEST_DATA="/local/home/ayavuz/data_all/data/fineweb-edu-raw/test"
 EVAL_OUTPUT_BASE="eval_results"
 CHECKPOINT_NAME=".checkpoints/step10000.ckpt"
 
-# Seed directories (note the inconsistent naming)
-SEED_DIRS=(
+# Model directories (note the inconsistent naming across experiments)
+MODEL_DIRS=(
     "/local/home/ayavuz/outputs_seed_42"
     "/local/home/ayavuz/output_seed_43"
     "/local/home/ayavuz/outputs_seed_44"
+    "/local/home/ayavuz/outputs"
 )
 
 # ── Main loop ─────────────────────────────────────────────────────────────────
-for seed_dir in "${SEED_DIRS[@]}"; do
-    if [[ ! -d "$seed_dir" ]]; then
-        echo "[WARN] Seed directory not found, skipping: $seed_dir"
+for model_base in "${MODEL_DIRS[@]}"; do
+    if [[ ! -d "$model_base" ]]; then
+        echo "[WARN] Directory not found, skipping: $model_base"
         continue
     fi
 
-    echo "=== Processing seed directory: $seed_dir ==="
+    echo "=== Processing directory: $model_base ==="
 
-    for model_dir in "$seed_dir"/me57M-tied_*/; do
+    for model_dir in "$model_base"/me57M-tied_*/; do
         # Strip trailing slash and get folder name
         model_dir="${model_dir%/}"
         folder_name="$(basename "$model_dir")"

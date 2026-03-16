@@ -1,8 +1,9 @@
 {
   "languages": {
     "eng_Latn": {
-      "data_path": "/local/home/ayavuz/data_all/data/fineweb-edu-raw/test",
-      "format": "parquet"
+      "name": "English",
+      "iso_code": "en",
+      "data_path": "/local/home/ayavuz/data_all/data/fineweb-edu-raw/test"
     }
   }
 }

@@ -1,0 +1,16 @@
+{
+  "tokenizers": [
+    {"name": "bpe-8k", "class": "huggingface", "path": "/local/home/ayavuz/data_all/tokenizers/bpe-8k"},
+    {"name": "bpe-32k", "class": "huggingface", "path": "/local/home/ayavuz/data_all/tokenizers/bpe-32k"},
+    {"name": "bpe-128k", "class": "huggingface", "path": "/local/home/ayavuz/data_all/tokenizers/bpe-128k"},
+    {"name": "compmax-8k", "class": "huggingface", "path": "/local/home/ayavuz/data_all/tokenizers/compmax-8k"},
+    {"name": "compmax-32k", "class": "huggingface", "path": "/local/home/ayavuz/data_all/tokenizers/compmax-32k"},
+    {"name": "compmax-128k", "class": "huggingface", "path": "/local/home/ayavuz/data_all/tokenizers/compmax-128k"},
+    {"name": "greedyll-exact-8k", "class": "huggingface", "path": "/local/home/ayavuz/data_all/tokenizers/greedyll-exact-8k"},
+    {"name": "greedyll-exact-32k", "class": "huggingface", "path": "/local/home/ayavuz/data_all/tokenizers/greedyll-exact-32k"},
+    {"name": "greedyll-exact-128k", "class": "huggingface", "path": "/local/home/ayavuz/data_all/tokenizers/greedyll-exact-128k"},
+    {"name": "unigramlm-8k", "class": "huggingface", "path": "/local/home/ayavuz/data_all/tokenizers/unigramlm-8k"},
+    {"name": "unigramlm-32k", "class": "huggingface", "path": "/local/home/ayavuz/data_all/tokenizers/unigramlm-32k"},
+    {"name": "unigramlm-128k", "class": "huggingface", "path": "/local/home/ayavuz/data_all/tokenizers/unigramlm-128k"}
+  ]
+}

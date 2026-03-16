@@ -3,7 +3,7 @@
     "eng_Latn": {
       "name": "English",
       "iso_code": "en",
-      "data_path": "/local/home/ayavuz/data_all/data/fineweb-edu-raw/test"
+      "data_path": "/local/home/ayavuz/data_all/data/fineweb-edu-raw/test.parquet"
     }
   }
 }

@@ -145,6 +145,24 @@ def setup_callbacks(config: dict, output_dir: Path, max_steps: int, grad_accum: 
     return callbacks
 
 
+def compute_max_steps(training_config: dict) -> int:
+    """Compute max_steps from config, supporting both max_steps and max_tokens."""
+    max_tokens = training_config.get("max_tokens")
+    max_steps = training_config.get("max_steps")
+
+    if max_tokens is not None:
+        batch_size = training_config.get("batch_size", 8)
+        grad_accum = training_config.get("gradient_accumulation", 1)
+        seq_len = training_config.get("sequence_length", 2048)
+        tokens_per_step = batch_size * grad_accum * seq_len
+        max_steps = max_tokens // tokens_per_step
+        console.print(f"[blue]max_tokens={max_tokens:,} / {tokens_per_step:,} tokens_per_step = {max_steps:,} steps[/blue]")
+    elif max_steps is None:
+        max_steps = 50000
+
+    return max_steps
+
+
 def setup_trainer(config: dict, output_dir: Path) -> Trainer:
     """Set up Lightning Trainer."""
     training_config = config.get("training", {})
@@ -152,7 +170,7 @@ def setup_trainer(config: dict, output_dir: Path) -> Trainer:
     logging_config = config.get("logging", {})
 
     grad_accum = training_config.get("gradient_accumulation", 1)
-    max_steps = training_config.get("max_steps", 50000)
+    max_steps = compute_max_steps(training_config)
 
     callbacks = setup_callbacks(config, output_dir, max_steps, grad_accum)
     logger = TensorBoardLogger(save_dir=output_dir, name="logs")
@@ -209,9 +227,19 @@ def train(
     tokenizer_path = paths_config.get("tokenizer", "unknown")
     tokenizer_name = Path(tokenizer_path).name if tokenizer_path else "unknown"
     model_name = config.get("model", {}).get("config_path", "model").split("/")[-1].replace(".yaml", "")
-    max_steps = training_config.get("max_steps", 50000)
+    max_steps = compute_max_steps(training_config)
 
-    run_name = f"{model_name}_{tokenizer_name}_{max_steps}steps_seed{seed}"
+    # Use token count in run name if max_tokens is set, otherwise use steps
+    max_tokens = training_config.get("max_tokens")
+    if max_tokens is not None:
+        token_label = f"{max_tokens // 1_000_000_000}B" if max_tokens >= 1_000_000_000 else f"{max_tokens // 1_000_000}M"
+        run_name = f"{model_name}_{tokenizer_name}_{token_label}tok_seed{seed}"
+    else:
+        run_name = f"{model_name}_{tokenizer_name}_{max_steps}steps_seed{seed}"
+
+    # Store computed max_steps back into config for setup_trainer
+    training_config["max_steps"] = max_steps
+
     output_dir = base_output_dir / run_name
     output_dir.mkdir(parents=True, exist_ok=True)
     console.print(f"[blue]Output dir: {output_dir}[/blue]")

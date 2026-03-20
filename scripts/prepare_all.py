@@ -282,7 +282,7 @@ def download_extra_train_data(
             meta = {
                 "total_tokens": tokens_so_far + total_new_tokens,
                 "total_docs": docs_so_far + total_new_docs,
-                "total_streamed": skipped + total_new_docs,
+                "total_streamed": streamed_so_far + total_new_docs,
                 "chunks_saved": chunk_idx + 1,
             }
             with open(extra_train_dir / "metadata.json", "w") as f:

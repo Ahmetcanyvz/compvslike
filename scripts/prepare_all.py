@@ -173,36 +173,148 @@ def download_extra_train_data(
     raw_data_dir: Path,
     extra_tokens: int,
     base_docs_streamed: int,
+    chunk_size: int = 500_000,
 ) -> None:
     """Download additional training documents beyond the base 2B.
 
     Resumes the FineWeb-Edu stream from where the base download left off,
-    so there is no overlap with val/test data.
+    so there is no overlap with val/test data. Saves in chunks to avoid
+    holding everything in memory.
     """
-    extra_train_path = raw_data_dir / "train_extra"
-    if extra_train_path.exists():
-        console.print(f"[yellow]Extra train data already exists at {extra_train_path}, skipping.[/yellow]")
+    extra_train_dir = raw_data_dir / "train_extra"
+
+    # Check if already complete
+    done_marker = extra_train_dir / "_DONE"
+    if done_marker.exists():
+        console.print(f"[yellow]Extra train data already exists at {extra_train_dir}, skipping.[/yellow]")
+        return
+
+    extra_train_dir.mkdir(parents=True, exist_ok=True)
+
+    # Find which chunks already exist (for resuming)
+    existing_chunks = sorted(extra_train_dir.glob("chunk_*"))
+    if existing_chunks:
+        # Load metadata from last chunk to resume
+        import json
+        meta_path = extra_train_dir / "metadata.json"
+        if meta_path.exists():
+            with open(meta_path) as f:
+                meta = json.load(f)
+            tokens_so_far = meta["total_tokens"]
+            docs_so_far = meta["total_docs"]
+            streamed_so_far = meta["total_streamed"]
+            chunk_idx = meta["chunks_saved"]
+            console.print(f"[yellow]Resuming from chunk {chunk_idx}: {tokens_so_far / 1e9:.2f}B tokens, {docs_so_far:,} docs[/yellow]")
+        else:
+            tokens_so_far = 0
+            docs_so_far = 0
+            streamed_so_far = 0
+            chunk_idx = 0
+    else:
+        tokens_so_far = 0
+        docs_so_far = 0
+        streamed_so_far = 0
+        chunk_idx = 0
+
+    remaining_tokens = extra_tokens - tokens_so_far
+    if remaining_tokens <= 0:
+        done_marker.touch()
+        console.print(f"[green]Already have enough extra tokens.[/green]")
         return
 
     console.print(f"[green]Step 2: Downloading ~{extra_tokens / 1e9:.0f}B additional training tokens...[/green]")
-    console.print(f"  Skipping first {base_docs_streamed:,} documents (already used for base split)")
+    skip_total = base_docs_streamed + streamed_so_far
+    console.print(f"  Skipping first {skip_total:,} documents")
 
     estimator = AutoTokenizer.from_pretrained("gpt2")
 
-    documents, total_tokens, _ = stream_documents(
-        estimator=estimator,
-        target_tokens=extra_tokens,
-        min_tokens=BASE_MIN_TOKENS,
-        skip_docs=base_docs_streamed,
-        uid_offset=base_docs_streamed,
-        desc="Downloading extra train data",
+    dataset = load_dataset(
+        "HuggingFaceFW/fineweb-edu",
+        split="train",
+        streaming=True,
     )
 
-    console.print(f"Collected {len(documents):,} extra documents ({total_tokens / 1e9:.2f}B tokens)")
+    chunk_docs = []
+    chunk_tokens = 0
+    skipped = 0
 
-    ds = Dataset.from_list(documents)
-    ds.save_to_disk(str(extra_train_path))
-    console.print(f"[green]Extra train data saved to {extra_train_path}[/green]")
+    if skip_total > 0:
+        pbar_skip = tqdm(total=skip_total, unit="doc", desc="Skipping existing docs")
+
+    pbar = tqdm(total=remaining_tokens, unit="tok", desc="Downloading extra train data")
+
+    total_new_tokens = 0
+    total_new_docs = 0
+    import json
+
+    for example in dataset:
+        if skipped < skip_total:
+            skipped += 1
+            if skip_total > 0:
+                pbar_skip.update(1)
+                if skipped == skip_total:
+                    pbar_skip.close()
+                    console.print(f"Done skipping. Collecting new data...")
+            continue
+
+        text = example["text"]
+        est_tokens = len(estimator.encode(text, add_special_tokens=False))
+
+        if est_tokens < BASE_MIN_TOKENS:
+            continue
+
+        chunk_docs.append({
+            "text": text,
+            "uid": base_docs_streamed + docs_so_far + total_new_docs + len(chunk_docs),
+        })
+        chunk_tokens += est_tokens
+        total_new_tokens += est_tokens
+        pbar.update(est_tokens)
+
+        # Save chunk when it reaches chunk_size
+        if len(chunk_docs) >= chunk_size:
+            chunk_path = extra_train_dir / f"chunk_{chunk_idx:04d}"
+            ds = Dataset.from_list(chunk_docs)
+            ds.save_to_disk(str(chunk_path))
+            total_new_docs += len(chunk_docs)
+
+            # Update metadata for resume
+            meta = {
+                "total_tokens": tokens_so_far + total_new_tokens,
+                "total_docs": docs_so_far + total_new_docs,
+                "total_streamed": skipped + total_new_docs,
+                "chunks_saved": chunk_idx + 1,
+            }
+            with open(extra_train_dir / "metadata.json", "w") as f:
+                json.dump(meta, f)
+
+            console.print(f"  Saved chunk {chunk_idx}: {len(chunk_docs):,} docs, total {(tokens_so_far + total_new_tokens) / 1e9:.2f}B tokens")
+            chunk_idx += 1
+            chunk_docs = []
+            chunk_tokens = 0
+
+        if total_new_tokens >= remaining_tokens:
+            break
+
+        if len(chunk_docs) % 10000 == 0 and len(chunk_docs) > 0:
+            pbar.set_postfix({"docs": total_new_docs + len(chunk_docs)})
+
+    pbar.close()
+
+    # Save remaining docs
+    if chunk_docs:
+        chunk_path = extra_train_dir / f"chunk_{chunk_idx:04d}"
+        ds = Dataset.from_list(chunk_docs)
+        ds.save_to_disk(str(chunk_path))
+        total_new_docs += len(chunk_docs)
+        console.print(f"  Saved chunk {chunk_idx}: {len(chunk_docs):,} docs")
+
+    # Mark as complete
+    done_marker.touch()
+
+    total_all = tokens_so_far + total_new_tokens
+    total_docs_all = docs_so_far + total_new_docs
+    console.print(f"[green]Extra train data complete: {total_docs_all:,} docs, {total_all / 1e9:.2f}B tokens in {chunk_idx + 1} chunks[/green]")
 
 
 def tokenize_split(
@@ -258,14 +370,16 @@ def tokenize_raw_data(
         console.print(f"[green]  Tokenizing {split_name}...[/green]")
         raw_ds = load_from_disk(str(split_path))
 
-        # For train: concatenate with extra train data if it exists
+        # For train: concatenate with extra train data chunks if they exist
         if split_name == "train":
-            extra_path = raw_data_dir / "train_extra"
-            if extra_path.exists():
-                console.print(f"[green]  Concatenating extra train data...[/green]")
-                extra_ds = load_from_disk(str(extra_path))
-                raw_ds = concatenate_datasets([raw_ds, extra_ds])
-                console.print(f"    Combined train: {len(raw_ds):,} documents")
+            extra_dir = raw_data_dir / "train_extra"
+            if extra_dir.exists():
+                chunk_paths = sorted(extra_dir.glob("chunk_*"))
+                if chunk_paths:
+                    console.print(f"[green]  Loading {len(chunk_paths)} extra train chunks...[/green]")
+                    extra_datasets = [load_from_disk(str(p)) for p in chunk_paths]
+                    raw_ds = concatenate_datasets([raw_ds] + extra_datasets)
+                    console.print(f"    Combined train: {len(raw_ds):,} documents")
 
         tok_ds = tokenize_split(raw_ds, tokenizer, num_proc)
 

@@ -9,8 +9,8 @@ set -euo pipefail
 export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}"
 
 # ── Configuration ─────────────────────────────────────────────────────────────
-TOKENIZER_BASE="/path/to/tokenizers"  # EDIT THIS
-DATA_BASE="/path/to/data"             # EDIT THIS
+TOKENIZER_BASE="/local/home/ayavuz/compvslike/tokenizers"
+DATA_BASE="/local/home/ayavuz/compvslike/data"
 SEED=42
 
 TOKENIZERS=(

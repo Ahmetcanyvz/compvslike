@@ -185,9 +185,9 @@ def setup_trainer(config: dict, output_dir: Path) -> Trainer:
         devices=hardware_config.get("devices", "auto"),
         precision=hardware_config.get("precision", "bf16-mixed"),
         strategy=hardware_config.get("strategy", "auto"),
-        # Logging
+        # Logging & validation
         log_every_n_steps=logging_config.get("log_every_n_steps", 50),
-        check_val_every_n_epoch=1,  # Validate every epoch
+        val_check_interval=logging_config.get("val_check_interval", 0.5),
         # Callbacks
         callbacks=callbacks,
         logger=logger,

@@ -1,26 +1,33 @@
 """End-to-end data preparation: download raw data + tokenize for training.
 
-Downloads FineWeb-Edu raw text (if not already present), then tokenizes it
-with the specified tokenizer. Produces train/val/test splits ready for training.
+Val/test splits are always derived from the first 2B tokens (seed=42 shuffle),
+matching the original notebook 01 procedure. If more training tokens are needed,
+additional documents are streamed and appended only to the train split.
 
 Usage:
-    # Full pipeline: download + tokenize
+    # Default 2B tokens (matches original setup)
     uv run python scripts/prepare_all.py \
-        --tokenizer /path/to/tokenizer/bpe-32k \
-        --output-dir data/fineweb-edu-bpe-32k \
-        --target-tokens 2_000_000_000
+        -t /path/to/tokenizers/bpe-32k \
+        -o data
+
+    # Scale up to 20B training tokens (same val/test)
+    uv run python scripts/prepare_all.py \
+        -t /path/to/tokenizers/bpe-32k \
+        -o data \
+        --target-tokens 20_000_000_000
 
     # Skip download if raw data already exists
     uv run python scripts/prepare_all.py \
-        --tokenizer /path/to/tokenizer/bpe-32k \
-        --output-dir data/fineweb-edu-bpe-32k \
+        -t /path/to/tokenizers/bpe-32k \
+        -o data \
         --raw-data-dir data/fineweb-edu-raw
 
-    # Tokenize all tokenizers at once
+    # Tokenize with multiple tokenizers at once
     uv run python scripts/prepare_all.py \
-        --tokenizer /path/to/tokenizers/bpe-8k /path/to/tokenizers/bpe-32k \
-        --output-dir data \
-        --raw-data-dir data/fineweb-edu-raw
+        -t /path/to/tokenizers/bpe-8k \
+        -t /path/to/tokenizers/bpe-32k \
+        -t /path/to/tokenizers/compmax-8k \
+        -o data
 """
 
 import random
@@ -28,7 +35,7 @@ from pathlib import Path
 from typing import Optional
 
 import typer
-from datasets import Dataset, load_dataset, load_from_disk
+from datasets import Dataset, concatenate_datasets, load_dataset, load_from_disk
 from rich.console import Console
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer
@@ -36,24 +43,27 @@ from transformers import AutoTokenizer
 app = typer.Typer(help="End-to-end data preparation for LM training.")
 console = Console()
 
+# These match the original notebook 01_prepare_fineweb.ipynb exactly
+BASE_TOKENS = 2_000_000_000
+BASE_SEED = 42
+BASE_TRAIN_RATIO = 0.95
+BASE_VAL_RATIO = 0.025
+BASE_MIN_TOKENS = 50
 
-def download_raw_data(
-    output_dir: Path,
+
+def stream_documents(
+    estimator: AutoTokenizer,
     target_tokens: int,
-    seed: int,
     min_tokens: int,
-    train_ratio: float,
-    val_ratio: float,
-) -> Path:
-    """Download FineWeb-Edu and create train/val/test splits of raw text."""
-    if (output_dir / "train").exists() and (output_dir / "test").exists():
-        console.print(f"[yellow]Raw data already exists at {output_dir}, skipping download.[/yellow]")
-        return output_dir
+    skip_docs: int = 0,
+    uid_offset: int = 0,
+    desc: str = "Collecting data",
+) -> tuple[list[dict], int, int]:
+    """Stream documents from FineWeb-Edu until reaching target token count.
 
-    console.print(f"[green]Downloading FineWeb-Edu (~{target_tokens / 1e9:.0f}B tokens)...[/green]")
-
-    estimator = AutoTokenizer.from_pretrained("gpt2")
-
+    Returns:
+        (documents, total_tokens, total_streamed) where total_streamed includes skipped docs.
+    """
     dataset = load_dataset(
         "HuggingFaceFW/fineweb-edu",
         split="train",
@@ -62,10 +72,24 @@ def download_raw_data(
 
     documents = []
     total_tokens = 0
+    streamed = 0
 
-    pbar = tqdm(total=target_tokens, unit="tok", desc="Collecting data")
+    if skip_docs > 0:
+        pbar_skip = tqdm(total=skip_docs, unit="doc", desc="Skipping existing docs")
+
+    pbar = tqdm(total=target_tokens, unit="tok", desc=desc)
 
     for example in dataset:
+        if streamed < skip_docs:
+            streamed += 1
+            if skip_docs > 0:
+                pbar_skip.update(1)
+                if streamed == skip_docs:
+                    pbar_skip.close()
+                    console.print(f"Done skipping {skip_docs:,} docs. Collecting new data...")
+            continue
+
+        streamed += 1
         text = example["text"]
         est_tokens = len(estimator.encode(text, add_special_tokens=False))
 
@@ -74,7 +98,7 @@ def download_raw_data(
 
         documents.append({
             "text": text,
-            "uid": len(documents),
+            "uid": uid_offset + len(documents),
         })
 
         total_tokens += est_tokens
@@ -87,15 +111,47 @@ def download_raw_data(
             pbar.set_postfix({"docs": len(documents)})
 
     pbar.close()
+    return documents, total_tokens, streamed
+
+
+def download_base_data(output_dir: Path) -> tuple[Path, int]:
+    """Download the base 2B tokens and create train/val/test splits.
+
+    This exactly reproduces the original notebook 01 procedure:
+    - Stream ~2B tokens from FineWeb-Edu
+    - Shuffle with seed=42
+    - Split 95% train / 2.5% val / 2.5% test
+
+    Returns:
+        (output_dir, num_documents_streamed)
+    """
+    if (output_dir / "train").exists() and (output_dir / "test").exists():
+        console.print(f"[yellow]Base raw data already exists at {output_dir}, skipping download.[/yellow]")
+        train_ds = load_from_disk(str(output_dir / "train"))
+        val_ds = load_from_disk(str(output_dir / "val"))
+        test_ds = load_from_disk(str(output_dir / "test"))
+        total_docs = len(train_ds) + len(val_ds) + len(test_ds)
+        return output_dir, total_docs
+
+    console.print("[green]Step 1: Downloading base 2B tokens from FineWeb-Edu...[/green]")
+    estimator = AutoTokenizer.from_pretrained("gpt2")
+
+    documents, total_tokens, total_streamed = stream_documents(
+        estimator=estimator,
+        target_tokens=BASE_TOKENS,
+        min_tokens=BASE_MIN_TOKENS,
+        desc="Downloading base data",
+    )
+
     console.print(f"Collected {len(documents):,} documents ({total_tokens / 1e9:.2f}B tokens)")
 
-    # Shuffle and split
-    random.seed(seed)
+    # Shuffle and split — exactly as in original notebook
+    random.seed(BASE_SEED)
     random.shuffle(documents)
 
     n = len(documents)
-    train_end = int(train_ratio * n)
-    val_end = int((train_ratio + val_ratio) * n)
+    train_end = int(BASE_TRAIN_RATIO * n)
+    val_end = int((BASE_TRAIN_RATIO + BASE_VAL_RATIO) * n)
 
     splits = {
         "train": documents[:train_end],
@@ -109,8 +165,44 @@ def download_raw_data(
         ds.save_to_disk(str(output_dir / split_name))
         console.print(f"  {split_name}: {len(docs):,} documents")
 
-    console.print(f"[green]Raw data saved to {output_dir}[/green]")
-    return output_dir
+    console.print(f"[green]Base raw data saved to {output_dir}[/green]")
+    return output_dir, len(documents)
+
+
+def download_extra_train_data(
+    raw_data_dir: Path,
+    extra_tokens: int,
+    base_docs_streamed: int,
+) -> None:
+    """Download additional training documents beyond the base 2B.
+
+    Resumes the FineWeb-Edu stream from where the base download left off,
+    so there is no overlap with val/test data.
+    """
+    extra_train_path = raw_data_dir / "train_extra"
+    if extra_train_path.exists():
+        console.print(f"[yellow]Extra train data already exists at {extra_train_path}, skipping.[/yellow]")
+        return
+
+    console.print(f"[green]Step 2: Downloading ~{extra_tokens / 1e9:.0f}B additional training tokens...[/green]")
+    console.print(f"  Skipping first {base_docs_streamed:,} documents (already used for base split)")
+
+    estimator = AutoTokenizer.from_pretrained("gpt2")
+
+    documents, total_tokens, _ = stream_documents(
+        estimator=estimator,
+        target_tokens=extra_tokens,
+        min_tokens=BASE_MIN_TOKENS,
+        skip_docs=base_docs_streamed,
+        uid_offset=base_docs_streamed,
+        desc="Downloading extra train data",
+    )
+
+    console.print(f"Collected {len(documents):,} extra documents ({total_tokens / 1e9:.2f}B tokens)")
+
+    ds = Dataset.from_list(documents)
+    ds.save_to_disk(str(extra_train_path))
+    console.print(f"[green]Extra train data saved to {extra_train_path}[/green]")
 
 
 def tokenize_split(
@@ -165,9 +257,18 @@ def tokenize_raw_data(
 
         console.print(f"[green]  Tokenizing {split_name}...[/green]")
         raw_ds = load_from_disk(str(split_path))
+
+        # For train: concatenate with extra train data if it exists
+        if split_name == "train":
+            extra_path = raw_data_dir / "train_extra"
+            if extra_path.exists():
+                console.print(f"[green]  Concatenating extra train data...[/green]")
+                extra_ds = load_from_disk(str(extra_path))
+                raw_ds = concatenate_datasets([raw_ds, extra_ds])
+                console.print(f"    Combined train: {len(raw_ds):,} documents")
+
         tok_ds = tokenize_split(raw_ds, tokenizer, num_proc)
 
-        # Print stats
         total_tokens = sum(len(x) for x in tok_ds["input_ids"])
         console.print(f"    {len(tok_ds):,} docs, {total_tokens:,} tokens ({total_tokens / 1e9:.2f}B)")
 
@@ -181,33 +282,34 @@ def main(
     tokenizer: list[str] = typer.Option(..., "--tokenizer", "-t", help="Path(s) to tokenizer(s)"),
     output_dir: Path = typer.Option("data", "--output-dir", "-o", help="Base output directory"),
     raw_data_dir: Optional[Path] = typer.Option(None, "--raw-data-dir", help="Existing raw data directory (skip download)"),
-    target_tokens: int = typer.Option(2_000_000_000, "--target-tokens", help="Target token count for download"),
-    seed: int = typer.Option(42, "--seed", help="Random seed for splitting"),
-    train_ratio: float = typer.Option(0.95, "--train-ratio", help="Train split ratio"),
-    val_ratio: float = typer.Option(0.025, "--val-ratio", help="Val split ratio"),
-    min_tokens: int = typer.Option(50, "--min-tokens", help="Minimum tokens per document"),
+    target_tokens: int = typer.Option(2_000_000_000, "--target-tokens", help="Total target training tokens"),
     num_proc: int = typer.Option(8, "--num-proc", help="Number of processes for tokenization"),
 ) -> None:
     """Download FineWeb-Edu and tokenize for training.
 
-    If --raw-data-dir is provided, skips download and uses existing raw data.
-    Multiple tokenizers can be specified to tokenize in one go.
+    Val/test splits always come from the first 2B tokens (seed=42 shuffle),
+    matching the original experiment setup. If --target-tokens > 2B, additional
+    documents are streamed and added only to the train split.
     """
-    # Step 1: Get raw data
+    # Step 1: Download base 2B tokens (creates val/test)
     if raw_data_dir and raw_data_dir.exists():
         console.print(f"[green]Using existing raw data from {raw_data_dir}[/green]")
+        train_ds = load_from_disk(str(raw_data_dir / "train"))
+        val_ds = load_from_disk(str(raw_data_dir / "val"))
+        test_ds = load_from_disk(str(raw_data_dir / "test"))
+        base_docs = len(train_ds) + len(val_ds) + len(test_ds)
     else:
         raw_data_dir = output_dir / "fineweb-edu-raw"
-        download_raw_data(
-            output_dir=raw_data_dir,
-            target_tokens=target_tokens,
-            seed=seed,
-            min_tokens=min_tokens,
-            train_ratio=train_ratio,
-            val_ratio=val_ratio,
-        )
+        raw_data_dir, base_docs = download_base_data(raw_data_dir)
 
-    # Step 2: Tokenize with each tokenizer
+    # Step 2: Download extra training data if needed
+    # Base train is ~95% of 2B = ~1.9B tokens
+    base_train_tokens = int(BASE_TOKENS * BASE_TRAIN_RATIO)
+    if target_tokens > base_train_tokens:
+        extra_tokens = target_tokens - base_train_tokens
+        download_extra_train_data(raw_data_dir, extra_tokens, base_docs)
+
+    # Step 3: Tokenize with each tokenizer
     for tok_path in tokenizer:
         tok_name = Path(tok_path).name
         tok_output = output_dir / f"fineweb-edu-{tok_name}"

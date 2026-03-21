@@ -11,7 +11,7 @@ TOKENIZER_BASE="/local/home/ayavuz/compvslike/tokenizers"
 DATA_BASE="/local/home/ayavuz/compvslike/data"
 
 MODELS=("me100M-tied" "me340M-tied" "me500M-tied")
-VOCAB_SIZES=("8k" "32k" "128k")
+VOCAB_SIZES=("128k" "32k" "8k")
 SEEDS=(42 43 44)
 TOK_TYPES=("bpe" "compmax" "greedyll-exact" "unigramlm")
 

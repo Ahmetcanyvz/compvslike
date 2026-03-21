@@ -39,7 +39,7 @@ paths:
   output_dir: ./outputs
 
 model:
-  config_path: configs/models/me1B-tied.yaml
+  config_path: models/me1B-tied.yaml
   use_flash_attention: true
   use_liger_kernel: false
   torch_compile: false

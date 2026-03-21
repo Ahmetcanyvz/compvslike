@@ -37,7 +37,7 @@ paths:
   output_dir: ./outputs
 
 model:
-  config_path: configs/models/${model}.yaml
+  config_path: models/${model}.yaml
   use_flash_attention: true
   use_liger_kernel: false
   torch_compile: false

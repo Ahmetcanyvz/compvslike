@@ -39,11 +39,11 @@ override-dependencies = ["triton"]
 
 [[tool.uv.index]]
 explicit = true
-name = "pytorch-nightly-cu126"
-url = "https://download.pytorch.org/whl/nightly/cu126"
+name = "pytorch-nightly-cu128"
+url = "https://download.pytorch.org/whl/nightly/cu128"
 
 [tool.uv.sources]
-torch = [{ index = "pytorch-nightly-cu126" }]
+torch = [{ index = "pytorch-nightly-cu128" }]
 
 [tool.ruff]
 line-length = 120

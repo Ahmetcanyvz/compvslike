@@ -35,7 +35,7 @@ packages = ["src"]
 cache-dir = "./.uv_cache"
 no-build-isolation-package = ["flash-attn"]
 prerelease = "allow"
-override-dependencies = ["triton>=3.0.0"]
+override-dependencies = ["triton"]
 
 [[tool.uv.index]]
 explicit = true

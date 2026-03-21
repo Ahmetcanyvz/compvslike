@@ -8,9 +8,9 @@ echo "=== Step 1: Install all dependencies with stable torch ==="
 uv sync
 
 echo ""
-echo "=== Step 2: Replace torch with nightly cu128 (Blackwell support) ==="
+echo "=== Step 2: Replace torch with nightly cu126 (Blackwell support) ==="
 uv pip install --force-reinstall --no-deps \
-    torch --pre --index-url https://download.pytorch.org/whl/nightly/cu128
+    torch --pre --index-url https://download.pytorch.org/whl/nightly/cu126
 
 echo ""
 echo "=== Step 3: Verify ==="

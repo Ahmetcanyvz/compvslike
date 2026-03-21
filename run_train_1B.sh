@@ -79,7 +79,7 @@ EOF
     echo "Config written to ${CONFIG_FILE}"
 
     # Run training
-    uv run python -m src.train train "$CONFIG_FILE" --seed "$SEED" \
+    uv run --no-sync python -m src.train train "$CONFIG_FILE" --seed "$SEED" \
         || echo "[FAIL] Training failed for ${tok}"
 
     echo "Finished: ${tok}"

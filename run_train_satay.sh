@@ -83,14 +83,14 @@ EOF
 # ── Main training loop ────────────────────────────────────────────────────────
 mkdir -p logs
 
-for model in "${MODELS[@]}"; do
+for seed in "${SEEDS[@]}"; do
     echo ""
     echo "################################################################"
-    echo "# Model: ${model}"
+    echo "# Seed: ${seed}"
     echo "################################################################"
 
-    for seed in "${SEEDS[@]}"; do
-        for vocab in "${VOCAB_SIZES[@]}"; do
+    for vocab in "${VOCAB_SIZES[@]}"; do
+        for model in "${MODELS[@]}"; do
             echo ""
             echo "============================================================"
             echo "  ${model} | vocab=${vocab} | seed=${seed} | 4 tokenizers in parallel"

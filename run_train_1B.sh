@@ -8,6 +8,10 @@ set -euo pipefail
 
 export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}"
 
+# ── Torch lib path (needed for Blackwell nightly) ────────────────────────────
+TORCH_LIB=$(uv run --no-sync python -c "import pathlib,torch; print(pathlib.Path(torch.__file__).parent / 'lib')")
+export LD_LIBRARY_PATH="${TORCH_LIB}:${LD_LIBRARY_PATH:-}"
+
 # ── Configuration ─────────────────────────────────────────────────────────────
 TOKENIZER_BASE="/local/home/ayavuz/compvslike/tokenizers"
 DATA_BASE="/local/home/ayavuz/compvslike/data"

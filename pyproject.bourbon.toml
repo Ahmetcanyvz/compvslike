@@ -35,14 +35,15 @@ packages = ["src"]
 cache-dir = "./.uv_cache"
 no-build-isolation-package = ["flash-attn"]
 prerelease = "allow"
+override-dependencies = ["triton>=3.0.0"]
 
 [[tool.uv.index]]
 explicit = true
-name = "pytorch-cu128"
-url = "https://download.pytorch.org/whl/nightly/cu128"
+name = "pytorch-nightly-cu126"
+url = "https://download.pytorch.org/whl/nightly/cu126"
 
 [tool.uv.sources]
-torch = [{ index = "pytorch-cu128" }]
+torch = [{ index = "pytorch-nightly-cu126" }]
 
 [tool.ruff]
 line-length = 120

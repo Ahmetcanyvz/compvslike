@@ -1,28 +1,36 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Setup script for bourbon (Blackwell GPUs, sm_120)
-# Installs everything with stable torch first, then replaces with nightly cu128
+# Setup for bourbon (Blackwell GPUs sm_120)
 
-echo "=== Step 1: Install all dependencies with stable torch ==="
+echo "=== Setting up bourbon environment ==="
+
+# Use bourbon-specific pyproject
+cp pyproject.bourbon.toml pyproject.toml
+rm -f uv.lock
+
+# Sync
 uv sync
 
-echo ""
-echo "=== Step 2: Replace torch with nightly cu126 (Blackwell support) ==="
-uv pip install --force-reinstall --no-deps \
-    torch --pre --index-url https://download.pytorch.org/whl/nightly/cu126
+# Set LD_LIBRARY_PATH to include torch's bundled libs (includes nvshmem)
+TORCH_LIB=$(uv run --no-sync python -c "import pathlib,torch; print(pathlib.Path(torch.__file__).parent / 'lib')")
+export LD_LIBRARY_PATH="${TORCH_LIB}:${LD_LIBRARY_PATH:-}"
 
+# Verify
 echo ""
-echo "=== Step 3: Verify ==="
+echo "=== Verifying ==="
 uv run --no-sync python -c "
 import torch
-print(f'PyTorch version: {torch.__version__}')
-print(f'CUDA version: {torch.version.cuda}')
+print(f'PyTorch: {torch.__version__}')
+print(f'CUDA: {torch.version.cuda}')
 print(f'GPU: {torch.cuda.get_device_name(0)}')
-print(f'Arch list: {torch.cuda.get_arch_list()}')
-sm120 = any('sm_120' in a or 'sm_12' in a for a in torch.cuda.get_arch_list())
-print(f'Blackwell (sm_120) supported: {sm120}')
+print(f'Archs: {torch.cuda.get_arch_list()}')
+t = torch.zeros(1).cuda()
+print(f'CUDA test: OK')
 "
 
 echo ""
-echo "=== Done! Use 'uv run --no-sync' instead of 'uv run' to avoid torch being reverted ==="
+echo "=== Done! ==="
+echo ""
+echo "Before training, always run:"
+echo "  export LD_LIBRARY_PATH=${TORCH_LIB}:\${LD_LIBRARY_PATH:-}"

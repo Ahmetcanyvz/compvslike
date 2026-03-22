@@ -24,9 +24,7 @@ launch_training() {
     local seed=$5
 
     local tok_name="${tok_type}-${vocab}"
-    local config_file="configs/generated/${model}_${tok_name}_seed${seed}.yaml"
-
-    mkdir -p configs/generated
+    local config_file="configs/${model}_${tok_name}_seed${seed}.yaml"
 
     cat > "$config_file" <<EOF
 paths:

@@ -26,6 +26,15 @@ launch_training() {
     local tok_name="${tok_type}-${vocab}"
     local config_file="configs/${model}_${tok_name}_seed${seed}.yaml"
 
+    # Set max_tokens based on model size (~20x params)
+    local max_tokens
+    case "$model" in
+        me100M-tied) max_tokens=2_000_000_000 ;;
+        me340M-tied) max_tokens=7_000_000_000 ;;
+        me500M-tied) max_tokens=10_000_000_000 ;;
+        *)           max_tokens=2_000_000_000 ;;
+    esac
+
     cat > "$config_file" <<EOF
 paths:
   tokenizer: ${TOKENIZER_BASE}/${tok_name}
@@ -42,7 +51,7 @@ model:
 
 training:
   seed: ${seed}
-  max_tokens: 2_600_000_000
+  max_tokens: ${max_tokens}
   batch_size: 4
   gradient_accumulation: 32
   sequence_length: 2048

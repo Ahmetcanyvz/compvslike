@@ -24,7 +24,7 @@ model:
   config_path: models/me1B-tied.yaml
   use_flash_attention: true
   use_liger_kernel: true
-  torch_compile: true
+  torch_compile: false
 
 training:
   seed: 42

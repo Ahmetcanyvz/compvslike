@@ -52,8 +52,8 @@ model:
 training:
   seed: ${seed}
   max_tokens: ${max_tokens}
-  batch_size: 8
-  gradient_accumulation: 16
+  batch_size: 16
+  gradient_accumulation: 8
   sequence_length: 2048
   learning_rate: 6.0e-4
   weight_decay: 0.1

@@ -28,8 +28,8 @@ model:
 training:
   seed: 42
   max_steps: 100
-  batch_size: 8
-  gradient_accumulation: 16
+  batch_size: 32
+  gradient_accumulation: 8
   sequence_length: 2048
 
 checkpoint:

@@ -45,14 +45,14 @@ paths:
 model:
   config_path: models/me1B-tied.yaml
   use_flash_attention: true
-  use_liger_kernel: false
+  use_liger_kernel: true
   torch_compile: false
 
 training:
   seed: ${SEED}
   max_tokens: 20_000_000_000
-  batch_size: 8
-  gradient_accumulation: 16
+  batch_size: 16
+  gradient_accumulation: 8
   sequence_length: 2048
   learning_rate: 6.0e-4
   weight_decay: 0.1
@@ -62,7 +62,7 @@ training:
   warmup_steps: 2000
   decay_steps: 2000
   min_lr_ratio: 0.01
-  z_loss_weight: 1.0e-4
+  z_loss_weight: 0
 
 checkpoint:
   save_every_n_steps: 5000

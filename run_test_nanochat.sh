@@ -47,4 +47,4 @@ logging:
   log_loss_every_n_steps: 50
 EOF
 
-uv run --no-sync python -m src.train_nanochat train "$CONFIG_FILE" --seed 42
+uv run --no-sync python -m src.train_nanochat "$CONFIG_FILE" --seed 42

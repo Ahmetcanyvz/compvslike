@@ -172,7 +172,7 @@ def train(
     # Trainer
     trainer = Trainer(
         max_steps=max_steps,
-        gradient_clip_val=training_config.get("max_grad_norm", 1.0),
+        # gradient_clip_val not supported with manual optimization
         accumulate_grad_batches=grad_accum,
         accelerator=hardware_config.get("accelerator", "auto"),
         devices=hardware_config.get("devices", "auto"),

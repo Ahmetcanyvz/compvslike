@@ -23,6 +23,7 @@ paths:
 model:
   nanochat_model: nc1B
   window_pattern: SSSL
+  torch_compile: false
 
 training:
   seed: 42

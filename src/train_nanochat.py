@@ -239,8 +239,8 @@ def train(
                 batch = next(train_loader)
 
             input_ids = batch["input_ids"].to(device)
-            x = input_ids[:, :-1]
-            y = input_ids[:, 1:]
+            x = input_ids[:, :-1].contiguous()
+            y = input_ids[:, 1:].contiguous()
             loss = model(x, y)
             train_loss = loss.detach()
             loss = loss / grad_accum

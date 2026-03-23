@@ -1,59 +1,50 @@
-"""Training script using nanochat's GPT model with lm-trainer's data pipeline.
+"""Train nanochat GPT model using lm-trainer's data pipeline.
+
+Raw PyTorch training loop (no Lightning), matching nanochat's base_train.py exactly.
+Only the data loading uses lm-trainer's pre-tokenized datasets.
 
 Usage:
-    uv run python -m src.train_nanochat train <config.yaml> [--seed 42]
+    uv run python -m src.train_nanochat <config.yaml> [--seed 42]
 """
 
+import os
+os.environ["PYTORCH_ALLOC_CONF"] = "expandable_segments:True"
+
+import gc
+import json
+import math
+import time
+import sys
+from dataclasses import asdict
 from pathlib import Path
 from typing import Optional
 
 import torch
 import typer
 import yaml
-from lightning.pytorch import Trainer, seed_everything
-from lightning.pytorch.callbacks import LearningRateMonitor, RichProgressBar
-from lightning.pytorch.loggers import TensorBoardLogger
-from rich.console import Console
+from torch.utils.data import DataLoader
 from transformers import AutoTokenizer
 
+# Add nanochat to path
+NANOCHAT_DIR = Path(__file__).parent.parent / "nanochat"
+if str(NANOCHAT_DIR) not in sys.path:
+    sys.path.insert(0, str(NANOCHAT_DIR))
+
+from nanochat.gpt import GPT, GPTConfig
+from nanochat.common import COMPUTE_DTYPE, COMPUTE_DTYPE_REASON
+
 from src.data import DataModule
-from src.nanochat_model import NanochatLanguageModel
-from src.train import (
-    CheckpointAtStepsCallback,
-    LogToFileCallback,
-    StopAtStepsCallback,
-)
 
-app = typer.Typer(help="Train nanochat GPT models with lm-trainer data pipeline.")
-console = Console()
+app = typer.Typer()
 
-
-# Map from lm-trainer model names to nanochat GPT dimensions
+# Model configs matching nanochat's depth-based sizing
 MODEL_CONFIGS = {
-    "nc57M": dict(n_layer=6, n_embd=768, n_head=12, n_kv_head=12),
-    "nc100M": dict(n_layer=12, n_embd=768, n_head=12, n_kv_head=12),
+    "nc57M":  dict(n_layer=6,  n_embd=768,  n_head=12, n_kv_head=12),
+    "nc100M": dict(n_layer=12, n_embd=768,  n_head=12, n_kv_head=12),
     "nc340M": dict(n_layer=20, n_embd=1280, n_head=20, n_kv_head=4),
     "nc500M": dict(n_layer=26, n_embd=1280, n_head=20, n_kv_head=4),
-    "nc1B": dict(n_layer=22, n_embd=2048, n_head=32, n_kv_head=4),
+    "nc1B":   dict(n_layer=22, n_embd=2048, n_head=32, n_kv_head=4),
 }
-
-
-def compute_max_steps(training_config: dict) -> int:
-    """Compute max_steps from config."""
-    max_tokens = training_config.get("max_tokens")
-    max_steps = training_config.get("max_steps")
-
-    if max_tokens is not None:
-        batch_size = training_config.get("batch_size", 8)
-        grad_accum = training_config.get("gradient_accumulation", 1)
-        seq_len = training_config.get("sequence_length", 2048)
-        tokens_per_step = batch_size * grad_accum * seq_len
-        max_steps = max_tokens // tokens_per_step
-        console.print(f"[blue]max_tokens={max_tokens:,} / {tokens_per_step:,} = {max_steps:,} steps[/blue]")
-    elif max_steps is None:
-        max_steps = 50000
-
-    return max_steps
 
 
 @app.command()
@@ -61,137 +52,276 @@ def train(
     config_path: Path = typer.Argument(..., help="Path to training config YAML"),
     seed: Optional[int] = typer.Option(None, "--seed", "-s", help="Override seed"),
 ) -> None:
-    """Train a nanochat GPT model."""
+    """Train a nanochat GPT model with lm-trainer data."""
+
     with open(config_path) as f:
         config = yaml.safe_load(f)
 
+    paths = config.get("paths", {})
+    tc = config.get("training", {})
+    mc = config.get("model", {})
+    hc = config.get("hardware", {})
+    cc = config.get("checkpoint", {})
+
     # Seed
     if seed is None:
-        seed = config.get("training", {}).get("seed", 42)
-    seed_everything(seed, workers=True)
-    console.print(f"[blue]Seed: {seed}[/blue]")
+        seed = tc.get("seed", 42)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
 
-    paths_config = config.get("paths", {})
-    training_config = config.get("training", {})
-    model_config = config.get("model", {})
-    hardware_config = config.get("hardware", {})
-    logging_config = config.get("logging", {})
+    # Device
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    torch.set_float32_matmul_precision("high")
+    print(f"Device: {device} | COMPUTE_DTYPE: {COMPUTE_DTYPE} ({COMPUTE_DTYPE_REASON})")
 
-    # Load tokenizer for vocab size
-    tokenizer_path = paths_config.get("tokenizer")
+    # Tokenizer
+    tokenizer_path = paths.get("tokenizer")
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
     vocab_size = len(tokenizer)
     eos_token_id = tokenizer.eos_token_id or 0
-    console.print(f"[blue]Tokenizer: {tokenizer_path} (vocab={vocab_size:,})[/blue]")
+    print(f"Tokenizer: {tokenizer_path} | vocab_size: {vocab_size:,}")
 
-    # Get model dimensions
-    nc_model_name = model_config.get("nanochat_model", "nc100M")
-    if nc_model_name in MODEL_CONFIGS:
-        model_dims = MODEL_CONFIGS[nc_model_name]
-    else:
-        raise ValueError(f"Unknown nanochat model: {nc_model_name}. Choose from: {list(MODEL_CONFIGS.keys())}")
+    # Model config
+    nc_model = mc.get("nanochat_model", "nc100M")
+    dims = MODEL_CONFIGS[nc_model]
+    seq_len = tc.get("sequence_length", 2048)
+    window_pattern = mc.get("window_pattern", "SSSL")
 
-    console.print(f"[blue]Model: {nc_model_name} (layers={model_dims['n_layer']}, dim={model_dims['n_embd']})[/blue]")
+    gpt_config = GPTConfig(
+        sequence_len=seq_len,
+        vocab_size=vocab_size,
+        n_layer=dims["n_layer"],
+        n_head=dims["n_head"],
+        n_kv_head=dims["n_kv_head"],
+        n_embd=dims["n_embd"],
+        window_pattern=window_pattern,
+    )
 
-    # Compute steps
-    grad_accum = training_config.get("gradient_accumulation", 1)
-    max_steps = compute_max_steps(training_config)
-    training_config["max_steps"] = max_steps
+    # Build model on meta device, then materialize and init weights (nanochat pattern)
+    with torch.device("meta"):
+        model = GPT(gpt_config)
+    model.to_empty(device=device)
+    model.init_weights()
 
-    # Output directory
-    base_output_dir = Path(paths_config.get("output_dir", "./outputs"))
-    tokenizer_name = Path(tokenizer_path).name if tokenizer_path else "unknown"
-    max_tokens = training_config.get("max_tokens")
+    num_params = sum(p.numel() for p in model.parameters())
+    print(f"Model: {nc_model} | {num_params / 1e6:.1f}M params | layers={dims['n_layer']} dim={dims['n_embd']}")
+
+    # Compile model
+    use_compile = mc.get("torch_compile", True)
+    orig_model = model
+    if use_compile:
+        try:
+            model = torch.compile(model, dynamic=False)
+            print("torch.compile: enabled")
+        except Exception as e:
+            print(f"torch.compile failed ({e}), continuing without")
+            model = orig_model
+
+    # Training params
+    device_batch_size = tc.get("batch_size", 32)
+    grad_accum = tc.get("gradient_accumulation", 1)
+    total_batch_size = device_batch_size * grad_accum * seq_len
+    print(f"Batch: {device_batch_size} x {grad_accum} x {seq_len} = {total_batch_size:,} tokens/step")
+
+    # Compute num_iterations
+    max_tokens = tc.get("max_tokens")
+    max_steps = tc.get("max_steps")
     if max_tokens is not None:
-        token_label = f"{max_tokens // 1_000_000_000}B" if max_tokens >= 1_000_000_000 else f"{max_tokens // 1_000_000}M"
-        run_name = f"{nc_model_name}_{tokenizer_name}_{token_label}tok_seed{seed}"
+        num_iterations = max_tokens // total_batch_size
+    elif max_steps is not None:
+        num_iterations = max_steps
     else:
-        run_name = f"{nc_model_name}_{tokenizer_name}_{max_steps}steps_seed{seed}"
+        num_iterations = 50000
+    print(f"Training for {num_iterations:,} steps ({num_iterations * total_batch_size / 1e9:.2f}B tokens)")
 
-    output_dir = base_output_dir / run_name
+    # Output dir
+    base_output = Path(paths.get("output_dir", "./outputs"))
+    tok_name = Path(tokenizer_path).name
+    if max_tokens and max_tokens >= 1_000_000_000:
+        run_name = f"{nc_model}_{tok_name}_{max_tokens // 1_000_000_000}Btok_seed{seed}"
+    else:
+        run_name = f"{nc_model}_{tok_name}_{num_iterations}steps_seed{seed}"
+    output_dir = base_output / run_name
     output_dir.mkdir(parents=True, exist_ok=True)
-    console.print(f"[blue]Output: {output_dir}[/blue]")
+    checkpoint_dir = output_dir / cc.get("save_dir", ".checkpoints")
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    print(f"Output: {output_dir}")
 
     # Save config
     with open(output_dir / "config.yaml", "w") as f:
         yaml.dump(config, f)
+    with open(output_dir / "model_config.json", "w") as f:
+        json.dump(asdict(gpt_config), f, indent=2)
 
-    # Create data module
+    # Optimizer (nanochat's MuonAdamW)
+    optim_cfg = tc.get("optimizer", {})
+    B_REF = 2**19
+    batch_lr_scale = (total_batch_size / B_REF) ** 0.5
+    weight_decay = optim_cfg.get("weight_decay", 0.28)
+    weight_decay_scaled = weight_decay * math.sqrt(total_batch_size / B_REF)
+
+    optimizer = orig_model.setup_optimizer(
+        unembedding_lr=optim_cfg.get("unembedding_lr", 0.008) * batch_lr_scale,
+        embedding_lr=optim_cfg.get("embedding_lr", 0.3) * batch_lr_scale,
+        scalar_lr=optim_cfg.get("scalar_lr", 0.5) * batch_lr_scale,
+        matrix_lr=optim_cfg.get("matrix_lr", 0.02) * batch_lr_scale,
+        weight_decay=weight_decay_scaled,
+    )
+
+    # Schedules (exactly as nanochat)
+    warmup_steps = optim_cfg.get("warmup_steps", 40)
+    warmdown_ratio = optim_cfg.get("warmdown_ratio", 0.65)
+    final_lr_frac = optim_cfg.get("final_lr_frac", 0.05)
+
+    def get_lr_multiplier(it):
+        warmdown_iters = round(warmdown_ratio * num_iterations)
+        if it < warmup_steps:
+            return (it + 1) / warmup_steps
+        elif it <= num_iterations - warmdown_iters:
+            return 1.0
+        else:
+            progress = (num_iterations - it) / warmdown_iters
+            return progress * 1.0 + (1 - progress) * final_lr_frac
+
+    def get_muon_momentum(it):
+        warmdown_iters = round(warmdown_ratio * num_iterations)
+        warmdown_start = num_iterations - warmdown_iters
+        if it < 400:
+            frac = it / 400
+            return (1 - frac) * 0.85 + frac * 0.97
+        elif it >= warmdown_start:
+            progress = (it - warmdown_start) / warmdown_iters
+            return 0.97 * (1 - progress) + 0.90 * progress
+        else:
+            return 0.97
+
+    def get_weight_decay(it):
+        return weight_decay_scaled * 0.5 * (1 + math.cos(math.pi * it / num_iterations))
+
+    # Data loader (lm-trainer's PackedTokenDataset)
     data_module = DataModule(
-        train_data_path=paths_config.get("train_data"),
-        val_data_path=paths_config.get("val_data"),
-        test_data_path=paths_config.get("test_data"),
-        seq_len=training_config.get("sequence_length", 2048),
+        train_data_path=paths.get("train_data"),
+        val_data_path=paths.get("val_data"),
+        test_data_path=paths.get("test_data"),
+        seq_len=seq_len,
         eos_token_id=eos_token_id,
         shuffle_seed=seed,
-        batch_size=training_config.get("batch_size", 32),
-        eval_batch_size=training_config.get("eval_batch_size"),
-        num_workers=hardware_config.get("num_workers", 4),
+        batch_size=device_batch_size,
+        num_workers=hc.get("num_workers", 4),
     )
+    data_module.setup("fit")
+    train_loader = iter(data_module.train_dataloader())
 
-    # Create model
-    optim_config = training_config.get("optimizer", {})
-    model = NanochatLanguageModel(
-        vocab_size=vocab_size,
-        n_layer=model_dims["n_layer"],
-        n_embd=model_dims["n_embd"],
-        n_head=model_dims["n_head"],
-        n_kv_head=model_dims["n_kv_head"],
-        sequence_len=training_config.get("sequence_length", 2048),
-        window_pattern=model_config.get("window_pattern", "SSSL"),
-        embedding_lr=optim_config.get("embedding_lr", 0.2),
-        unembedding_lr=optim_config.get("unembedding_lr", 0.004),
-        matrix_lr=optim_config.get("matrix_lr", 0.02),
-        scalar_lr=optim_config.get("scalar_lr", 0.5),
-        weight_decay=optim_config.get("weight_decay", 0.28),
-        grad_accum_steps=grad_accum,
-        warmup_steps=optim_config.get("warmup_steps", 40),
-        warmdown_ratio=optim_config.get("warmdown_ratio", 0.65),
-        final_lr_frac=optim_config.get("final_lr_frac", 0.05),
-    )
+    # Logging
+    save_every = cc.get("save_every_n_steps", 5000)
+    log_every = tc.get("log_loss_every_n_steps", 100)
+    log_file = open(output_dir / "training_log.txt", "w")
+    log_file.write(f"Training {nc_model} | {num_params/1e6:.1f}M params | {num_iterations:,} steps\n")
 
-    # Callbacks
-    ckpt_config = config.get("checkpoint", {})
-    checkpoint_dir = output_dir / ckpt_config.get("save_dir", ".checkpoints")
-    save_every = ckpt_config.get("save_every_n_steps", 5000)
-    log_every = logging_config.get("log_loss_every_n_steps", 1000)
+    # =========================================================================
+    # Training loop (matches nanochat's base_train.py)
+    # =========================================================================
+    model.train()
+    smooth_train_loss = 0.0
+    total_training_time = 0.0
 
-    callbacks = [
-        RichProgressBar(),
-        StopAtStepsCallback(max_steps),
-        LogToFileCallback(output_dir / "training_log.txt", grad_accum=grad_accum, every_n_steps=log_every),
-        CheckpointAtStepsCallback(
-            checkpoint_dir=checkpoint_dir,
-            grad_accum=grad_accum,
-            every_n_steps=save_every,
-            save_last=ckpt_config.get("save_last", True),
-        ),
-    ]
+    print(f"\nStarting training...")
+    for step in range(num_iterations):
+        torch.cuda.synchronize()
+        t0 = time.time()
 
-    logger = TensorBoardLogger(save_dir=output_dir, name="logs")
+        # Gradient accumulation
+        for micro_step in range(grad_accum):
+            try:
+                batch = next(train_loader)
+            except StopIteration:
+                train_loader = iter(data_module.train_dataloader())
+                batch = next(train_loader)
 
-    # Trainer
-    trainer = Trainer(
-        max_steps=max_steps * grad_accum,  # Trainer counts batches, not optimizer steps
-        # manual optimization handles grad accum and clipping
-        accelerator=hardware_config.get("accelerator", "auto"),
-        devices=hardware_config.get("devices", "auto"),
-        precision=hardware_config.get("precision", "bf16-true"),
-        strategy=hardware_config.get("strategy", "auto"),
-        log_every_n_steps=logging_config.get("log_every_n_steps", 50),
-        val_check_interval=logging_config.get("val_check_interval", 0.5),
-        callbacks=callbacks,
-        logger=logger,
-        enable_checkpointing=True,
-        enable_progress_bar=True,
-        enable_model_summary=True,
-    )
+            input_ids = batch["input_ids"].to(device)
+            x = input_ids[:, :-1]
+            y = input_ids[:, 1:]
+            loss = model(x, y)
+            train_loss = loss.detach()
+            loss = loss / grad_accum
+            loss.backward()
 
-    # Train
-    console.print("[green]Starting nanochat training...[/green]")
-    torch.set_float32_matmul_precision("high")
-    trainer.fit(model=model, datamodule=data_module)
-    console.print(f"[green]Training complete! Output: {output_dir}[/green]")
+        # Update optimizer with schedules
+        lrm = get_lr_multiplier(step)
+        muon_momentum = get_muon_momentum(step)
+        muon_wd = get_weight_decay(step)
+        for group in optimizer.param_groups:
+            group["lr"] = group["initial_lr"] * lrm
+            if group["kind"] == "muon":
+                group["momentum"] = muon_momentum
+                group["weight_decay"] = muon_wd
+
+        optimizer.step()
+        model.zero_grad(set_to_none=True)
+
+        train_loss_f = train_loss.item()
+        torch.cuda.synchronize()
+        t1 = time.time()
+        dt = t1 - t0
+
+        # Logging
+        ema_beta = 0.9
+        smooth_train_loss = ema_beta * smooth_train_loss + (1 - ema_beta) * train_loss_f
+        debiased_loss = smooth_train_loss / (1 - ema_beta ** (step + 1))
+
+        if step > 10:
+            total_training_time += dt
+
+        if step % log_every == 0:
+            tok_per_sec = int(total_batch_size / dt) if dt > 0 else 0
+            pct = 100 * step / num_iterations
+            peak_mem = torch.cuda.max_memory_allocated() / 1024 / 1024
+
+            # ETA
+            if step > 10:
+                avg_dt = total_training_time / (step - 10)
+                eta_min = (num_iterations - step) * avg_dt / 60
+                eta_str = f" | eta: {eta_min:.1f}m"
+            else:
+                eta_str = ""
+
+            msg = f"step {step:05d}/{num_iterations:05d} ({pct:.1f}%) | loss: {debiased_loss:.4f} | lrm: {lrm:.2f} | dt: {dt*1000:.0f}ms | tok/s: {tok_per_sec:,} | mem: {peak_mem:.0f}MiB{eta_str}"
+            print(msg)
+            log_file.write(msg + "\n")
+            log_file.flush()
+
+        # Checkpointing
+        if save_every > 0 and step > 0 and step % save_every == 0:
+            ckpt_path = checkpoint_dir / f"step{step}.pt"
+            torch.save(orig_model.state_dict(), ckpt_path)
+            print(f"  Saved checkpoint: {ckpt_path}")
+
+        # GC management (from nanochat)
+        if step == 0:
+            gc.collect()
+            gc.freeze()
+            gc.disable()
+        elif step % 5000 == 0:
+            gc.collect()
+
+    # Save final checkpoint
+    if cc.get("save_last", True):
+        ckpt_path = checkpoint_dir / "last.pt"
+        torch.save(orig_model.state_dict(), ckpt_path)
+        print(f"Saved final checkpoint: {ckpt_path}")
+
+    # Save model config for loading later
+    with open(checkpoint_dir / "model_config.json", "w") as f:
+        json.dump(asdict(gpt_config), f, indent=2)
+
+    peak_mem = torch.cuda.max_memory_allocated() / 1024 / 1024
+    print(f"\nTraining complete!")
+    print(f"Peak memory: {peak_mem:.0f} MiB")
+    print(f"Total training time: {total_training_time/60:.1f}m")
+    print(f"Final loss: {debiased_loss:.4f}")
+    print(f"Output: {output_dir}")
+
+    log_file.close()
 
 
 if __name__ == "__main__":

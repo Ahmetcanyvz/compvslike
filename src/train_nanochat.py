@@ -143,6 +143,7 @@ def train(
         matrix_lr=optim_config.get("matrix_lr", 0.02),
         scalar_lr=optim_config.get("scalar_lr", 0.5),
         weight_decay=optim_config.get("weight_decay", 0.28),
+        grad_accum_steps=grad_accum,
         warmup_steps=optim_config.get("warmup_steps", 40),
         warmdown_ratio=optim_config.get("warmdown_ratio", 0.65),
         final_lr_frac=optim_config.get("final_lr_frac", 0.05),
@@ -171,9 +172,8 @@ def train(
 
     # Trainer
     trainer = Trainer(
-        max_steps=max_steps,
-        # gradient_clip_val not supported with manual optimization
-        accumulate_grad_batches=grad_accum,
+        max_steps=max_steps * grad_accum,  # Trainer counts batches, not optimizer steps
+        # manual optimization handles grad accum and clipping
         accelerator=hardware_config.get("accelerator", "auto"),
         devices=hardware_config.get("devices", "auto"),
         precision=hardware_config.get("precision", "bf16-true"),

@@ -40,6 +40,8 @@ class NanochatLanguageModel(LightningModule):
         matrix_lr: float = 0.02,
         scalar_lr: float = 0.5,
         weight_decay: float = 0.28,
+        # Training
+        grad_accum_steps: int = 1,
         # Schedule
         warmup_steps: int = 40,
         warmdown_ratio: float = 0.65,
@@ -58,7 +60,8 @@ class NanochatLanguageModel(LightningModule):
             window_pattern=window_pattern,
         )
 
-        # Store optimizer hyperparams
+        # Store training config
+        self.grad_accum_steps = grad_accum_steps
         self.embedding_lr = embedding_lr
         self.unembedding_lr = unembedding_lr
         self.matrix_lr = matrix_lr
@@ -85,35 +88,36 @@ class NanochatLanguageModel(LightningModule):
         return self.model(input_ids, targets=targets)
 
     def training_step(self, batch: dict[str, Tensor], batch_idx: int) -> None:
-        """Manual training step with MuonAdamW schedule updates."""
+        """Manual training step with MuonAdamW schedule updates and gradient accumulation."""
         input_ids = batch["input_ids"]
         optimizer = self.optimizers()
-        scheduler_info = self._get_schedule_info()
 
-        # Update optimizer hyperparams per step
-        lrm = self._get_lr_multiplier(self.global_step)
-        muon_momentum = self._get_muon_momentum(self.global_step)
-        muon_wd = self._get_weight_decay(self.global_step)
-
-        for group in optimizer.param_groups:
-            group["lr"] = group["initial_lr"] * lrm
-            if group.get("kind") == "muon":
-                group["momentum"] = muon_momentum
-                group["weight_decay"] = muon_wd
-
-        # Forward + loss (model returns loss directly when targets given)
+        # Forward + loss
         loss = self.model(input_ids[:, :-1], targets=input_ids[:, 1:])
 
-        # Backward
-        self.manual_backward(loss)
+        # Scale loss by grad accumulation steps
+        scaled_loss = loss / self.grad_accum_steps
+        self.manual_backward(scaled_loss)
 
-        # Step optimizer every accumulate_grad_batches
-        if (batch_idx + 1) % self.trainer.accumulate_grad_batches == 0:
+        # Step optimizer every grad_accum_steps batches
+        if (batch_idx + 1) % self.grad_accum_steps == 0:
+            # Update optimizer hyperparams before stepping
+            step = self.global_step
+            lrm = self._get_lr_multiplier(step)
+            muon_momentum = self._get_muon_momentum(step)
+            muon_wd = self._get_weight_decay(step)
+
+            for group in optimizer.param_groups:
+                group["lr"] = group["initial_lr"] * lrm
+                if group.get("kind") == "muon":
+                    group["momentum"] = muon_momentum
+                    group["weight_decay"] = muon_wd
+
             optimizer.step()
             optimizer.zero_grad(set_to_none=True)
 
         self.log_dict(
-            {"train/loss": loss.detach(), "train/lr": lrm * self.matrix_lr},
+            {"train/loss": loss.detach(), "train/lr": self._get_lr_multiplier(self.global_step) * self.matrix_lr},
             on_step=True,
             on_epoch=False,
             prog_bar=True,

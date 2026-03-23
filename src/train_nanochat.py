@@ -94,6 +94,7 @@ def train(
     console.print(f"[blue]Model: {nc_model_name} (layers={model_dims['n_layer']}, dim={model_dims['n_embd']})[/blue]")
 
     # Compute steps
+    grad_accum = training_config.get("gradient_accumulation", 1)
     max_steps = compute_max_steps(training_config)
     training_config["max_steps"] = max_steps
 
@@ -150,7 +151,6 @@ def train(
     )
 
     # Callbacks
-    grad_accum = training_config.get("gradient_accumulation", 1)
     ckpt_config = config.get("checkpoint", {})
     checkpoint_dir = output_dir / ckpt_config.get("save_dir", ".checkpoints")
     save_every = ckpt_config.get("save_every_n_steps", 5000)

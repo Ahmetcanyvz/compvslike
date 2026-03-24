@@ -244,6 +244,14 @@ class PackedTokenDataset(TorchDataset):
         tokens = self._get_sequence(start_pos, end_pos)
         return {"input_ids": torch.from_numpy(tokens)}
 
+    def state_dict(self) -> dict:
+        """Return state for Lightning checkpoint resumption."""
+        return {"num_sequences": self.num_sequences, "seq_len": self.seq_len}
+
+    def load_state_dict(self, state_dict: dict) -> None:
+        """Load state from Lightning checkpoint."""
+        pass
+
 
 class SimpleTokenDataset(TorchDataset):
     """Simple dataset that loads pre-packed sequences directly.

@@ -84,21 +84,8 @@ logging:
   log_loss_every_n_steps: 1000
 EOF
 
-    # Check for existing checkpoint to resume from
-    local max_tokens_b=$((max_tokens / 1000000000))
-    local output_name="${model}_${tok_name}_${max_tokens_b}Btok_seed${seed}"
-    local ckpt_dir="outputs/${output_name}/.checkpoints"
-    local resume_flag=""
-    if [[ -d "$ckpt_dir" ]]; then
-        local last_ckpt=$(ls -t "$ckpt_dir"/step*.ckpt 2>/dev/null | head -1)
-        if [[ -n "$last_ckpt" ]]; then
-            resume_flag="--resume $last_ckpt"
-            echo "[GPU ${gpu}] Resuming ${model} / ${tok_name} from ${last_ckpt}"
-        fi
-    fi
-
     echo "[GPU ${gpu}] Starting: ${model} / ${tok_name} / seed${seed}"
-    CUDA_VISIBLE_DEVICES=$gpu uv run python -m src.train "$config_file" --seed "$seed" $resume_flag \
+    CUDA_VISIBLE_DEVICES=$gpu uv run python -m src.train "$config_file" --seed "$seed" \
         > "logs/${model}_${tok_name}_seed${seed}.log" 2>&1
     echo "[GPU ${gpu}] Done: ${model} / ${tok_name} / seed${seed}"
 }

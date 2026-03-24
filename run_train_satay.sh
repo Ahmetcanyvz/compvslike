@@ -31,10 +31,10 @@ launch_training() {
     # Set max_tokens based on model size (~20x params)
     local max_tokens
     case "$model" in
-        me100M-tied) max_tokens=2_000_000_000 ;;
-        me340M-tied) max_tokens=7_000_000_000 ;;
-        me500M-tied) max_tokens=10_000_000_000 ;;
-        *)           max_tokens=2_000_000_000 ;;
+        me100M-tied) max_tokens=2000000000 ;;
+        me340M-tied) max_tokens=7000000000 ;;
+        me500M-tied) max_tokens=10000000000 ;;
+        *)           max_tokens=2000000000 ;;
     esac
 
     # 128k vocab needs smaller batch to avoid OOM (logits tensor = batch×seq×128k)

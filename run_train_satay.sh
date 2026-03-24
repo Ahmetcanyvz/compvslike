@@ -40,6 +40,10 @@ launch_training() {
     local batch_size=16
     local grad_accum=8
     local eval_bs=4
+    if [[ "$model" == "me100M-tied" ]]; then
+        batch_size=32
+        grad_accum=4
+    fi
 
     cat > "$config_file" <<EOF
 paths:

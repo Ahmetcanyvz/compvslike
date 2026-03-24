@@ -37,6 +37,16 @@ launch_training() {
         *)           max_tokens=2_000_000_000 ;;
     esac
 
+    # 128k vocab needs smaller batch to avoid OOM (logits tensor = batch×seq×128k)
+    local batch_size=16
+    local grad_accum=8
+    local eval_bs=4
+    if [[ "$vocab" == "128k" ]]; then
+        batch_size=8
+        grad_accum=16
+        eval_bs=2
+    fi
+
     cat > "$config_file" <<EOF
 paths:
   tokenizer: ${TOKENIZER_BASE}/${tok_name}
@@ -54,9 +64,9 @@ model:
 training:
   seed: ${seed}
   max_tokens: ${max_tokens}
-  batch_size: 16
-  eval_batch_size: 4
-  gradient_accumulation: 8
+  batch_size: ${batch_size}
+  eval_batch_size: ${eval_bs}
+  gradient_accumulation: ${grad_accum}
   sequence_length: 2048
   learning_rate: 6.0e-4
   weight_decay: 0.1

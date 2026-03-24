@@ -108,7 +108,7 @@ EOF
     fi
 
     echo "[GPU ${gpu}] Starting: ${model} / ${tok_name} / seed${seed}"
-    CUDA_VISIBLE_DEVICES=$gpu uv run python -m src.train "$config_file" --seed "$seed" $resume_flag \
+    CUDA_VISIBLE_DEVICES=$gpu uv run python -m src.train train "$config_file" --seed "$seed" $resume_flag \
         > "logs/${model}_${tok_name}_seed${seed}.log" 2>&1
     echo "[GPU ${gpu}] Done: ${model} / ${tok_name} / seed${seed}"
 }

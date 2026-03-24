@@ -199,10 +199,8 @@ class LanguageModel(LightningModule):
         """Compute loss with optional z-loss regularization."""
         input_ids = batch["input_ids"]
 
-        # Use HuggingFace's built-in loss computation (handles label shifting)
         outputs = self.model(input_ids=input_ids, labels=input_ids.clone())
         loss = outputs.loss
-
         logs = {"loss": loss.detach()}
 
         # Add z-loss regularization if configured
@@ -212,6 +210,9 @@ class LanguageModel(LightningModule):
             loss = loss + self.optim_config.z_loss_weight * z_loss
             logs["z_loss"] = z_loss.detach()
             logs["total_loss"] = loss.detach()
+
+        # Free logits to avoid OOM during validation with large vocab
+        del outputs
 
         return loss, logs
 

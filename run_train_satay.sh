@@ -7,6 +7,8 @@ set -euo pipefail
 # Runs 4 tokenizer types in parallel (one per GPU)
 # =============================================================================
 
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+
 TOKENIZER_BASE="/local/home/ayavuz/compvslike/tokenizers"
 DATA_BASE="/local/home/ayavuz/compvslike/data"
 
@@ -53,6 +55,7 @@ training:
   seed: ${seed}
   max_tokens: ${max_tokens}
   batch_size: 16
+  eval_batch_size: 4
   gradient_accumulation: 8
   sequence_length: 2048
   learning_rate: 6.0e-4

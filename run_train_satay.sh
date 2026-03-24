@@ -37,15 +37,9 @@ launch_training() {
         *)           max_tokens=2000000000 ;;
     esac
 
-    # 128k vocab needs smaller batch to avoid OOM (logits tensor = batch×seq×128k)
     local batch_size=16
     local grad_accum=8
     local eval_bs=4
-    if [[ "$vocab" == "128k" ]]; then
-        batch_size=8
-        grad_accum=16
-        eval_bs=2
-    fi
 
     cat > "$config_file" <<EOF
 paths:

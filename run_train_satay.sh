@@ -44,10 +44,6 @@ launch_training() {
         batch_size=32
         grad_accum=4
     fi
-    if [[ "$model" == "me340M-tied" && "$vocab" == "128k" ]]; then
-        batch_size=8
-        grad_accum=16
-    fi
 
     cat > "$config_file" <<EOF
 paths:

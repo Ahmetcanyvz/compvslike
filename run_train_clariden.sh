@@ -8,7 +8,7 @@
 #SBATCH --gpus-per-node=4
 #SBATCH --output=logs/clariden_%j.out
 #SBATCH --error=logs/clariden_%j.err
-#SBATCH --environment=pytorch_env
+#SBATCH --environment=lm_trainer_env
 #SBATCH --container-writable
 
 set -euo pipefail

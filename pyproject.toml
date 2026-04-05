@@ -3,7 +3,7 @@ name = "lm-trainer"
 version = "0.1.0"
 description = "Clean language model training library"
 readme = "README.md"
-requires-python = ">=3.11,<3.13"
+requires-python = ">=3.10,<3.13"
 dependencies = [
     "torch>=2.6.0,<2.7.0",
     "transformers>=4.48.0",

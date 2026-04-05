@@ -1,0 +1,15 @@
+FROM nvcr.io/nvidia/pytorch:24.04-py3
+
+RUN pip install --no-cache-dir \
+    transformers \
+    lightning \
+    datasets \
+    polars \
+    pyyaml \
+    typer \
+    rich \
+    pydantic \
+    tqdm \
+    statsmodels \
+    tensorboard \
+    liger-kernel

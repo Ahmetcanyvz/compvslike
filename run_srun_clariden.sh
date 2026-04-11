@@ -63,6 +63,16 @@ logging:
   val_check_interval: 0.5
 EOF
 
+echo "=== Pre-creating dataset metadata ==="
+python -c "
+from src.data import PackedTokenDataset
+for split in ['train', 'val']:
+    path = '${DATA_BASE}/fineweb-edu-${TOK_NAME}/' + split
+    print(f'Creating metadata for {path}...')
+    ds = PackedTokenDataset(path, seq_len=2048, eos_token_id=0, shuffle_seed=42 if split == 'train' else None)
+    print(f'  {len(ds)} sequences')
+"
+
 echo "=== Training: me1B-tied / ${TOK_NAME} / seed${SEED} ==="
 
 export NCCL_DEBUG=INFO

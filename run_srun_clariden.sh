@@ -76,6 +76,7 @@ for split in ['train', 'val']:
 echo "=== Training: me1B-tied / ${TOK_NAME} / seed${SEED} ==="
 
 export NCCL_DEBUG=WARN
+export NCCL_NET=Socket
 export MASTER_ADDR=localhost
 export MASTER_PORT=29500
 

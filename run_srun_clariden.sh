@@ -64,4 +64,9 @@ logging:
 EOF
 
 echo "=== Training: me1B-tied / ${TOK_NAME} / seed${SEED} ==="
+
+export NCCL_DEBUG=INFO
+export MASTER_ADDR=localhost
+export MASTER_PORT=29500
+
 python -m src.train train "$CONFIG_FILE" --seed "$SEED"

@@ -2,39 +2,25 @@
 #SBATCH --job-name=lm-train-1B
 #SBATCH --partition=normal
 #SBATCH --account=a139
-#SBATCH --time=24:00:00
+#SBATCH --time=12:00:00
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=4
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=288
 #SBATCH --gpus-per-node=4
-#SBATCH --output=logs/clariden_%j.out
-#SBATCH --error=logs/clariden_%j.err
-#SBATCH --environment=lm_trainer_env
+#SBATCH --output=logs/train_%j.out
+#SBATCH --error=logs/train_%j.err
 #SBATCH --container-writable
+#SBATCH --environment=lm_trainer_env
 
 set -euo pipefail
 
-# ── Paths ─────────────────────────────────────────────────────────────────────
 WORK_DIR="/iopsstor/scratch/cscs/ayavuz/compvslike"
 TOKENIZER_BASE="${WORK_DIR}/tokenizers"
 DATA_BASE="${WORK_DIR}/data"
-PIP_CACHE="${WORK_DIR}/pip_packages"
 
 cd "$WORK_DIR"
-
-# ── Install packages (without upgrading torch) ───────────────────────────────
-echo "=== Installing packages ==="
-pip install --no-deps \
-    transformers lightning datasets polars pyyaml typer rich pydantic \
-    tqdm statsmodels tensorboard liger-kernel \
-    pytorch-lightning lightning-utilities torchmetrics \
-    huggingface-hub tokenizers safetensors \
-    pyarrow multiprocess dill xxhash fsspec aiohttp \
-    pydantic-core annotated-types typing-inspection \
-    patsy scipy regex requests
-
 pip install -e . --no-deps
 
-# ── Config ────────────────────────────────────────────────────────────────────
 TOK_TYPE="${1:-greedyll-exact}"
 VOCAB="128k"
 SEED=42
@@ -60,6 +46,7 @@ training:
   seed: ${SEED}
   max_tokens: 20000000000
   batch_size: 32
+  eval_batch_size: 4
   gradient_accumulation: 2
   sequence_length: 2048
   learning_rate: 6.0e-4
@@ -89,11 +76,10 @@ logging:
   val_check_interval: 0.5
 EOF
 
-echo "=== Config: ${CONFIG_FILE} ==="
 echo "=== Training: me1B-tied / ${TOK_NAME} / seed${SEED} ==="
-echo "=== GPUs: $(nvidia-smi -L | wc -l) ==="
+echo "=== GPUs: 4 x GH200 ==="
+echo "=== Config: ${CONFIG_FILE} ==="
 
-# ── Training with DDP ─────────────────────────────────────────────────────────
 mkdir -p logs
 
 python -m src.train train "$CONFIG_FILE" --seed "$SEED"

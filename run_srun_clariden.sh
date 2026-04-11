@@ -60,7 +60,7 @@ hardware:
 logging:
   log_every_n_steps: 50
   log_loss_every_n_steps: 1000
-  val_check_interval: 0.5
+  val_check_interval: 1.0
 EOF
 
 echo "=== Pre-creating dataset metadata ==="
@@ -77,6 +77,7 @@ echo "=== Training: me1B-tied / ${TOK_NAME} / seed${SEED} ==="
 
 export NCCL_DEBUG=WARN
 export NCCL_NET=Socket
+export NCCL_TIMEOUT=3600
 export MASTER_ADDR=localhost
 export MASTER_PORT=29500
 

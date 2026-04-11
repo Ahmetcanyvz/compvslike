@@ -226,23 +226,34 @@ class LanguageModel(LightningModule):
             on_epoch=False,
             prog_bar=True,
             batch_size=batch["input_ids"].shape[0],
-            sync_dist=True,
+            sync_dist=False,
         )
 
         return loss
 
     def validation_step(self, batch: dict[str, Tensor], batch_idx: int) -> Tensor:
-        """Validation step."""
-        loss, logs = self._compute_loss(batch)
+        """Validation step — processes in chunks to avoid OOM with large vocab.
 
-        self.log_dict(
-            {f"val/{k}": v for k, v in logs.items()},
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-            batch_size=batch["input_ids"].shape[0],
-            sync_dist=True,
-        )
+        Liger's fused_linear_cross_entropy doesn't fuse in eval mode,
+        so the full logit tensor (batch × seq × vocab) is materialized.
+        For 128k vocab this can be 15GB+. Chunking avoids this.
+        """
+        input_ids = batch["input_ids"]
+        batch_size = input_ids.shape[0]
+        chunk_size = max(1, min(4, batch_size))  # process 4 samples at a time
+
+        total_loss = 0.0
+        num_chunks = 0
+
+        for i in range(0, batch_size, chunk_size):
+            chunk = {"input_ids": input_ids[i:i + chunk_size]}
+            chunk_loss, _ = self._compute_loss(chunk)
+            total_loss += chunk_loss.detach() * chunk["input_ids"].shape[0]
+            num_chunks += chunk["input_ids"].shape[0]
+
+        loss = total_loss / num_chunks
+        self.log("val/loss", loss, on_step=False, on_epoch=True, prog_bar=True,
+                 batch_size=batch_size, sync_dist=True)
 
         return loss
 

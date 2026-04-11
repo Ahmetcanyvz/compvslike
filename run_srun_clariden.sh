@@ -60,7 +60,7 @@ hardware:
 logging:
   log_every_n_steps: 50
   log_loss_every_n_steps: 1000
-  val_check_interval: 1.0
+  val_check_interval: 20000
 EOF
 
 echo "=== Pre-creating dataset metadata ==="
@@ -81,4 +81,5 @@ export NCCL_TIMEOUT=3600
 export MASTER_ADDR=localhost
 export MASTER_PORT=29500
 
-python -m src.train train "$CONFIG_FILE" --seed "$SEED"
+torchrun --nproc_per_node=4 --master_addr=localhost --master_port=29500 \
+    -m src.train train "$CONFIG_FILE" --seed "$SEED"

@@ -66,6 +66,7 @@ EOF
 echo "=== Training: me1B-tied / ${TOK_NAME} / seed${SEED} ==="
 
 export NCCL_DEBUG=INFO
+export NCCL_NET=Socket
 export MASTER_ADDR=localhost
 export MASTER_PORT=29500
 

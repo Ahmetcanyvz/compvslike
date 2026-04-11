@@ -34,7 +34,7 @@ training:
   max_tokens: 20000000000
   batch_size: 16
   eval_batch_size: 4
-  gradient_accumulation: 4
+  gradient_accumulation: 1
   sequence_length: 2048
   learning_rate: 6.0e-4
   weight_decay: 0.1

@@ -175,7 +175,7 @@ def setup_trainer(config: dict, output_dir: Path) -> Trainer:
 
     trainer = Trainer(
         # Training
-        max_epochs=-1,  # StopAtStepsCallback handles stopping
+        max_steps=max_steps,
         gradient_clip_val=training_config.get("max_grad_norm", 1.0),
         accumulate_grad_batches=grad_accum,
         # Hardware
@@ -308,15 +308,6 @@ def train(
 
     # Create trainer
     trainer = setup_trainer(config, output_dir)
-
-    # If resuming, extract batch position from checkpoint and set on datamodule
-    if resume:
-        ckpt = torch.load(str(resume), map_location="cpu", weights_only=False)
-        batch_completed = ckpt.get("loops", {}).get("fit_loop", {}).get("epoch_loop.batch_progress", {}).get("total", {}).get("completed", 0)
-        if batch_completed > 0:
-            console.print(f"[blue]Resuming dataloader from batch {batch_completed}[/blue]")
-            data_module.set_resume_batch(batch_completed)
-        del ckpt
 
     # Train
     console.print("[green]Starting training...[/green]")

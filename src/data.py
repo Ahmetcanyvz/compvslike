@@ -388,20 +388,10 @@ class DataModule(LightningDataModule):
             "shuffle": False,  # Shuffling handled by dataset
         }
 
-    def set_resume_batch(self, batch_idx: int) -> None:
-        """Set the batch index to resume from."""
-        self._resume_batch_idx = batch_idx
-
     def train_dataloader(self) -> DataLoader:
         if self.train_ds is None:
             raise ValueError("Train dataset not initialized. Call setup() first.")
-        start = getattr(self, "_resume_batch_idx", 0)
-        if start > 0:
-            print(f"Resuming dataloader from batch {start}")
-        sampler = ResumableSampler(self.train_ds, start_index=start)
-        kwargs = self._dataloader_kwargs()
-        kwargs.pop("shuffle", None)
-        return DataLoader(self.train_ds, batch_size=self.batch_size, sampler=sampler, **kwargs)
+        return DataLoader(self.train_ds, batch_size=self.batch_size, **self._dataloader_kwargs())
 
     def val_dataloader(self) -> DataLoader:
         if self.val_ds is None:

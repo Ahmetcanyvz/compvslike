@@ -53,18 +53,11 @@ class LogToFileCallback(Callback):
         self.log_path = Path(log_path)
         self.grad_accum = grad_accum
         self.every_n_steps = every_n_steps
-        self.total_batches = 0
         self.logged_steps = set()
         print(f"[LogToFileCallback] every_n_steps={every_n_steps}, grad_accum={grad_accum}", file=sys.stderr)
 
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
-        self.total_batches += 1
-        # Calculate optimizer step from total batches
-        step = self.total_batches // self.grad_accum
-
-        # Debug every 500 batches
-        if self.total_batches % 500 == 0:
-            print(f"[DEBUG] total_batches={self.total_batches}, step={step}", file=sys.stderr)
+        step = trainer.global_step
 
         # Log at the specified optimizer step interval
         if step > 0 and step % self.every_n_steps == 0 and step not in self.logged_steps:
@@ -81,7 +74,7 @@ class LogToFileCallback(Callback):
             f.write(f"Logging every {self.every_n_steps} optimizer steps (grad_accum={self.grad_accum})\n")
 
     def on_validation_end(self, trainer, pl_module):
-        step = self.total_batches // self.grad_accum
+        step = trainer.global_step
         val_loss = float(trainer.callback_metrics.get("val/loss", float("nan")))
         msg = f"[VAL] step={step}, val_loss={val_loss:.4f}"
         with open(self.log_path, "a") as f:
@@ -94,18 +87,14 @@ class CheckpointAtStepsCallback(Callback):
 
     def __init__(self, checkpoint_dir: Path, grad_accum: int, every_n_steps: int, save_last: bool = True):
         self.checkpoint_dir = Path(checkpoint_dir)
-        self.grad_accum = grad_accum
         self.every_n_steps = every_n_steps
         self.save_last = save_last
-        self.total_batches = 0
         self.saved_steps = set()
         self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
         print(f"[CheckpointAtStepsCallback] Will save to: {self.checkpoint_dir} every {every_n_steps} optimizer steps", file=sys.stderr)
 
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
-        self.total_batches += 1
-        # Calculate optimizer step from total batches
-        step = self.total_batches // self.grad_accum
+        step = trainer.global_step
 
         if step > 0 and step % self.every_n_steps == 0 and step not in self.saved_steps:
             self.saved_steps.add(step)

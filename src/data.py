@@ -18,6 +18,22 @@ except ImportError:
     StatefulDataLoader = None
 
 
+class SkipBatchSampler(torch.utils.data.BatchSampler):
+    """BatchSampler that skips the first N batches. Used for mid-epoch resume."""
+
+    def __init__(self, batch_sampler, skip_batches: int = 0):
+        self.batch_sampler = batch_sampler
+        self.skip_batches = skip_batches
+
+    def __iter__(self):
+        for i, batch in enumerate(self.batch_sampler):
+            if i >= self.skip_batches:
+                yield batch
+
+    def __len__(self):
+        return len(self.batch_sampler) - self.skip_batches
+
+
 class DataConfig(BaseModel):
     """Configuration for data loading."""
 
@@ -374,18 +390,17 @@ class DataModule(LightningDataModule):
 
         skip = getattr(self, "_skip_batches", 0)
         kwargs = self._dataloader_kwargs()
-        LoaderClass = StatefulDataLoader if StatefulDataLoader is not None else DataLoader
+        kwargs.pop("drop_last", None)  # BatchSampler handles this
+
+        # Create base dataloader with BatchSampler
+        sampler = torch.utils.data.SequentialSampler(self.train_ds)
+        batch_sampler = torch.utils.data.BatchSampler(sampler, batch_size=self.batch_size, drop_last=True)
 
         if skip > 0:
-            # Wrap dataset with Subset starting from skip position
-            n = len(self.train_ds)
-            start = skip % n
-            indices = list(range(start, n)) + list(range(0, start))
-            subset = torch.utils.data.Subset(self.train_ds, indices)
-            print(f"Dataloader: resuming from sample {start} (skipped {skip})")
-            return LoaderClass(subset, batch_size=self.batch_size, **kwargs)
+            batch_sampler = SkipBatchSampler(batch_sampler, skip_batches=skip)
+            print(f"Dataloader: skipping {skip} batches, {len(batch_sampler)} batches remaining")
 
-        return LoaderClass(self.train_ds, batch_size=self.batch_size, **kwargs)
+        return DataLoader(self.train_ds, batch_sampler=batch_sampler, **kwargs)
 
     def val_dataloader(self) -> DataLoader:
         if self.val_ds is None:

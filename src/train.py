@@ -154,9 +154,12 @@ def compute_max_steps(training_config: dict) -> int:
         batch_size = training_config.get("batch_size", 8)
         grad_accum = training_config.get("gradient_accumulation", 1)
         seq_len = training_config.get("sequence_length", 2048)
-        tokens_per_step = batch_size * grad_accum * seq_len
+        # In DDP, each GPU processes batch_size per micro-batch
+        import torch
+        num_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 1
+        tokens_per_step = batch_size * grad_accum * num_gpus * seq_len
         max_steps = max_tokens // tokens_per_step
-        console.print(f"[blue]max_tokens={max_tokens:,} / {tokens_per_step:,} tokens_per_step = {max_steps:,} steps[/blue]")
+        console.print(f"[blue]max_tokens={max_tokens:,} / {tokens_per_step:,} tokens_per_step ({num_gpus} GPUs) = {max_steps:,} steps[/blue]")
     elif max_steps is None:
         max_steps = 50000
 
@@ -188,6 +191,7 @@ def setup_trainer(config: dict, output_dir: Path) -> Trainer:
         # Logging & validation
         log_every_n_steps=logging_config.get("log_every_n_steps", 50),
         val_check_interval=logging_config.get("val_check_interval", 0.5),
+        num_sanity_val_steps=0,
         # Callbacks
         callbacks=callbacks,
         logger=logger,

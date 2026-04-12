@@ -309,6 +309,16 @@ def train(
     # Create trainer
     trainer = setup_trainer(config, output_dir)
 
+    # If resuming from old checkpoint without StatefulDataLoader state,
+    # set skip count on DataModule so it skips already-processed batches
+    if resume:
+        ckpt = torch.load(str(resume), map_location="cpu", weights_only=False)
+        batch_completed = ckpt.get("loops", {}).get("fit_loop", {}).get("epoch_loop.batch_progress", {}).get("total", {}).get("completed", 0)
+        if batch_completed > 0:
+            console.print(f"[blue]Setting dataloader to skip {batch_completed} batches[/blue]")
+            data_module._skip_batches = batch_completed
+        del ckpt
+
     # Train
     console.print("[green]Starting training...[/green]")
     torch.set_float32_matmul_precision("high")

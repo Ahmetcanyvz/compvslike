@@ -371,9 +371,21 @@ class DataModule(LightningDataModule):
     def train_dataloader(self) -> DataLoader:
         if self.train_ds is None:
             raise ValueError("Train dataset not initialized. Call setup() first.")
-        if StatefulDataLoader is not None:
-            return StatefulDataLoader(self.train_ds, batch_size=self.batch_size, **self._dataloader_kwargs())
-        return DataLoader(self.train_ds, batch_size=self.batch_size, **self._dataloader_kwargs())
+
+        skip = getattr(self, "_skip_batches", 0)
+        kwargs = self._dataloader_kwargs()
+        LoaderClass = StatefulDataLoader if StatefulDataLoader is not None else DataLoader
+
+        if skip > 0:
+            # Wrap dataset with Subset starting from skip position
+            n = len(self.train_ds)
+            start = skip % n
+            indices = list(range(start, n)) + list(range(0, start))
+            subset = torch.utils.data.Subset(self.train_ds, indices)
+            print(f"Dataloader: resuming from sample {start} (skipped {skip})")
+            return LoaderClass(subset, batch_size=self.batch_size, **kwargs)
+
+        return LoaderClass(self.train_ds, batch_size=self.batch_size, **kwargs)
 
     def val_dataloader(self) -> DataLoader:
         if self.val_ds is None:

@@ -135,6 +135,7 @@ class LanguageModel(LightningModule):
         use_flash_attention: bool = True,
         use_liger_kernel: bool = False,
         torch_compile: bool = False,
+        max_steps: int = 50000,
     ) -> None:
         super().__init__()
 
@@ -143,6 +144,7 @@ class LanguageModel(LightningModule):
         self.optim_config = OptimConfig(**(optim_config or {}))
         self.use_flash_attention = use_flash_attention
         self.use_liger_kernel = use_liger_kernel
+        self._max_steps = max_steps
         self.torch_compile = torch_compile
 
         self.save_hyperparameters()
@@ -311,7 +313,7 @@ class LanguageModel(LightningModule):
         )
 
         # Warmup-stable-decay scheduler
-        total_steps = int(self.trainer.estimated_stepping_batches)
+        total_steps = self._max_steps
         warmup_steps = self.optim_config.warmup_steps
         decay_steps = self.optim_config.decay_steps
         stable_steps = max(0, total_steps - warmup_steps - decay_steps)

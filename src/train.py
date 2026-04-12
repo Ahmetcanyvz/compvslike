@@ -175,7 +175,7 @@ def setup_trainer(config: dict, output_dir: Path) -> Trainer:
 
     trainer = Trainer(
         # Training
-        max_steps=max_steps,
+        max_epochs=-1,  # StopAtStepsCallback handles stopping
         gradient_clip_val=training_config.get("max_grad_norm", 1.0),
         accumulate_grad_batches=grad_accum,
         # Hardware
@@ -303,6 +303,7 @@ def train(
         use_flash_attention=model_settings.get("use_flash_attention", True),
         use_liger_kernel=model_settings.get("use_liger_kernel", False),
         torch_compile=model_settings.get("torch_compile", False),
+        max_steps=max_steps,
     )
 
     # Create trainer

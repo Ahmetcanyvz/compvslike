@@ -21,17 +21,17 @@ except ImportError:
 class SkipBatchSampler(torch.utils.data.BatchSampler):
     """BatchSampler that skips the first N batches. Used for mid-epoch resume."""
 
-    def __init__(self, batch_sampler, skip_batches: int = 0):
-        self.batch_sampler = batch_sampler
+    def __init__(self, sampler, batch_size, drop_last=True, skip_batches: int = 0):
+        super().__init__(sampler, batch_size, drop_last)
         self.skip_batches = skip_batches
 
     def __iter__(self):
-        for i, batch in enumerate(self.batch_sampler):
+        for i, batch in enumerate(super().__iter__()):
             if i >= self.skip_batches:
                 yield batch
 
     def __len__(self):
-        return len(self.batch_sampler) - self.skip_batches
+        return super().__len__() - self.skip_batches
 
 
 class DataConfig(BaseModel):
@@ -390,17 +390,15 @@ class DataModule(LightningDataModule):
 
         skip = getattr(self, "_skip_batches", 0)
         kwargs = self._dataloader_kwargs()
-        kwargs.pop("drop_last", None)  # BatchSampler handles this
-
-        # Create base dataloader with BatchSampler
-        sampler = torch.utils.data.SequentialSampler(self.train_ds)
-        batch_sampler = torch.utils.data.BatchSampler(sampler, batch_size=self.batch_size, drop_last=True)
 
         if skip > 0:
-            batch_sampler = SkipBatchSampler(batch_sampler, skip_batches=skip)
-            print(f"Dataloader: skipping {skip} batches, {len(batch_sampler)} batches remaining")
+            kwargs.pop("drop_last", None)
+            sampler = torch.utils.data.SequentialSampler(self.train_ds)
+            batch_sampler = SkipBatchSampler(sampler, batch_size=self.batch_size, drop_last=True, skip_batches=skip)
+            print(f"Dataloader: skipping {skip} batches, {len(batch_sampler)} remaining")
+            return DataLoader(self.train_ds, batch_sampler=batch_sampler, **kwargs)
 
-        return DataLoader(self.train_ds, batch_sampler=batch_sampler, **kwargs)
+        return DataLoader(self.train_ds, batch_size=self.batch_size, **kwargs)
 
     def val_dataloader(self) -> DataLoader:
         if self.val_ds is None:

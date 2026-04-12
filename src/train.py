@@ -175,7 +175,7 @@ def setup_trainer(config: dict, output_dir: Path) -> Trainer:
 
     trainer = Trainer(
         # Training
-        max_epochs=-1,  # StopAtStepsCallback handles stopping
+        max_steps=max_steps,
         gradient_clip_val=training_config.get("max_grad_norm", 1.0),
         accumulate_grad_batches=grad_accum,
         # Hardware

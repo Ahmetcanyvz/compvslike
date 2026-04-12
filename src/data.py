@@ -273,10 +273,6 @@ class PackedTokenDataset(TorchDataset):
         """Load state from Lightning checkpoint."""
         pass
 
-    def get_sampler(self, start_index: int = 0) -> ResumableSampler:
-        """Get a resumable sampler for this dataset."""
-        return ResumableSampler(self, start_index=start_index)
-
 
 class SimpleTokenDataset(TorchDataset):
     """Simple dataset that loads pre-packed sequences directly.

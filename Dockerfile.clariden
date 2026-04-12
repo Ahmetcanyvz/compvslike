@@ -8,4 +8,5 @@ RUN pip install --no-cache-dir \
     "typer>=0.15.0" \
     "tqdm>=4.66.0" \
     "statsmodels>=0.14.0" \
-    "liger-kernel>=0.5.0,<0.6.0"
+    "liger-kernel>=0.5.0,<0.6.0" \
+    "torchdata==0.7.1"

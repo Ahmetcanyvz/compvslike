@@ -12,6 +12,11 @@ from lightning.pytorch import LightningDataModule
 from pydantic import BaseModel, field_validator
 from torch.utils.data import DataLoader, Dataset as TorchDataset, Sampler
 
+try:
+    from torchdata.stateful_dataloader import StatefulDataLoader
+except ImportError:
+    StatefulDataLoader = None
+
 
 class DataConfig(BaseModel):
     """Configuration for data loading."""
@@ -106,27 +111,6 @@ class OffsetLocator:
 
     def __len__(self) -> int:
         return len(self.offsets)
-
-
-class ResumableSampler(Sampler):
-    """Sequential sampler that can resume from a saved position.
-
-    Yields indices starting from start_index, wrapping around to 0
-    when reaching the end of the dataset.
-    """
-
-    def __init__(self, data_source, start_index: int = 0):
-        self.data_source = data_source
-        self.start_index = start_index
-
-    def __iter__(self):
-        n = len(self.data_source)
-        # Start from saved position, wrap around
-        for i in range(n):
-            yield (self.start_index + i) % n
-
-    def __len__(self):
-        return len(self.data_source)
 
 
 class PackedTokenDataset(TorchDataset):
@@ -387,6 +371,8 @@ class DataModule(LightningDataModule):
     def train_dataloader(self) -> DataLoader:
         if self.train_ds is None:
             raise ValueError("Train dataset not initialized. Call setup() first.")
+        if StatefulDataLoader is not None:
+            return StatefulDataLoader(self.train_ds, batch_size=self.batch_size, **self._dataloader_kwargs())
         return DataLoader(self.train_ds, batch_size=self.batch_size, **self._dataloader_kwargs())
 
     def val_dataloader(self) -> DataLoader:

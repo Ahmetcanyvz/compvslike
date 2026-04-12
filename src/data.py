@@ -10,7 +10,7 @@ import torch
 from datasets import Dataset, load_from_disk
 from lightning.pytorch import LightningDataModule
 from pydantic import BaseModel, field_validator
-from torch.utils.data import DataLoader, Dataset as TorchDataset
+from torch.utils.data import DataLoader, Dataset as TorchDataset, Sampler
 
 
 class DataConfig(BaseModel):
@@ -106,6 +106,26 @@ class OffsetLocator:
 
     def __len__(self) -> int:
         return len(self.offsets)
+
+
+class ResumableSampler(Sampler):
+    """Sequential sampler that can resume from a saved position."""
+
+    def __init__(self, data_source, start_index: int = 0):
+        self.data_source = data_source
+        self.start_index = start_index
+
+    def __iter__(self):
+        return iter(range(self.start_index, len(self.data_source)))
+
+    def __len__(self):
+        return len(self.data_source) - self.start_index
+
+    def state_dict(self):
+        return {"start_index": self.start_index}
+
+    def load_state_dict(self, state_dict):
+        self.start_index = state_dict["start_index"]
 
 
 class PackedTokenDataset(TorchDataset):
@@ -252,6 +272,10 @@ class PackedTokenDataset(TorchDataset):
         """Load state from Lightning checkpoint."""
         pass
 
+    def get_sampler(self, start_index: int = 0) -> ResumableSampler:
+        """Get a resumable sampler for this dataset."""
+        return ResumableSampler(self, start_index=start_index)
+
 
 class SimpleTokenDataset(TorchDataset):
     """Simple dataset that loads pre-packed sequences directly.
@@ -363,10 +387,20 @@ class DataModule(LightningDataModule):
             "shuffle": False,  # Shuffling handled by dataset
         }
 
+    def set_resume_batch(self, batch_idx: int) -> None:
+        """Set the batch index to resume from."""
+        self._resume_batch_idx = batch_idx
+
     def train_dataloader(self) -> DataLoader:
         if self.train_ds is None:
             raise ValueError("Train dataset not initialized. Call setup() first.")
-        return DataLoader(self.train_ds, batch_size=self.batch_size, **self._dataloader_kwargs())
+        start = getattr(self, "_resume_batch_idx", 0)
+        if start > 0:
+            print(f"Resuming dataloader from batch {start}")
+        sampler = ResumableSampler(self.train_ds, start_index=start)
+        kwargs = self._dataloader_kwargs()
+        kwargs.pop("shuffle", None)
+        return DataLoader(self.train_ds, batch_size=self.batch_size, sampler=sampler, **kwargs)
 
     def val_dataloader(self) -> DataLoader:
         if self.val_ds is None:

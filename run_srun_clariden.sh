@@ -81,5 +81,16 @@ export NCCL_TIMEOUT=3600
 export MASTER_ADDR=localhost
 export MASTER_PORT=29500
 
+# Auto-resume from last checkpoint if exists
+CKPT_DIR="${WORK_DIR}/outputs/me1B-tied_${TOK_NAME}_20Btok_seed${SEED}/.checkpoints"
+RESUME_FLAG=""
+if [[ -d "$CKPT_DIR" ]]; then
+    LAST_CKPT=$(ls -t "$CKPT_DIR"/step*.ckpt 2>/dev/null | head -1)
+    if [[ -n "$LAST_CKPT" ]]; then
+        RESUME_FLAG="--resume $LAST_CKPT"
+        echo "=== Resuming from $LAST_CKPT ==="
+    fi
+fi
+
 torchrun --nproc_per_node=4 --master_addr=localhost --master_port=29500 \
-    -m src.train train "$CONFIG_FILE" --seed "$SEED"
+    -m src.train train "$CONFIG_FILE" --seed "$SEED" $RESUME_FLAG

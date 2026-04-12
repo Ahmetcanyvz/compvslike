@@ -49,19 +49,21 @@ class StopAtStepsCallback(Callback):
 class LogToFileCallback(Callback):
     """Log train loss to a text file at regular intervals (in optimizer steps)."""
 
-    def __init__(self, log_path: Path, grad_accum: int, every_n_steps: int = 1000):
+    def __init__(self, log_path: Path, every_n_steps: int = 1000):
         self.log_path = Path(log_path)
-        self.grad_accum = grad_accum
         self.every_n_steps = every_n_steps
-        self.logged_steps = set()
-        print(f"[LogToFileCallback] every_n_steps={every_n_steps}, grad_accum={grad_accum}", file=sys.stderr)
+        self._initial_step = None
 
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
         step = trainer.global_step
+        if self._initial_step is None:
+            self._initial_step = step
 
-        # Log at the specified optimizer step interval
-        if step > 0 and step % self.every_n_steps == 0 and step not in self.logged_steps:
-            self.logged_steps.add(step)
+        # Skip the restored step to avoid duplicate logging
+        if step == self._initial_step:
+            return
+
+        if step > 0 and step % self.every_n_steps == 0:
             loss = float(trainer.callback_metrics.get("train/loss", float("nan")))
             lr = trainer.optimizers[0].param_groups[0]["lr"]
             msg = f"step={step}, loss={loss:.4f}, lr={lr:.2e}"
@@ -70,8 +72,8 @@ class LogToFileCallback(Callback):
             print(f"[LOG] {msg}", file=sys.stderr)
 
     def on_train_start(self, trainer, pl_module):
-        with open(self.log_path, "w") as f:
-            f.write(f"Logging every {self.every_n_steps} optimizer steps (grad_accum={self.grad_accum})\n")
+        with open(self.log_path, "a") as f:
+            f.write(f"Logging every {self.every_n_steps} optimizer steps\n")
 
     def on_validation_end(self, trainer, pl_module):
         step = trainer.global_step
@@ -85,22 +87,27 @@ class LogToFileCallback(Callback):
 class CheckpointAtStepsCallback(Callback):
     """Save checkpoints at specific optimizer steps."""
 
-    def __init__(self, checkpoint_dir: Path, grad_accum: int, every_n_steps: int, save_last: bool = True):
+    def __init__(self, checkpoint_dir: Path, every_n_steps: int, save_last: bool = True):
         self.checkpoint_dir = Path(checkpoint_dir)
         self.every_n_steps = every_n_steps
         self.save_last = save_last
-        self.saved_steps = set()
+        self._initial_step = None
         self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
-        print(f"[CheckpointAtStepsCallback] Will save to: {self.checkpoint_dir} every {every_n_steps} optimizer steps", file=sys.stderr)
 
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
         step = trainer.global_step
+        if self._initial_step is None:
+            self._initial_step = step
 
-        if step > 0 and step % self.every_n_steps == 0 and step not in self.saved_steps:
-            self.saved_steps.add(step)
+        # Skip the restored step to avoid overwriting checkpoint we just loaded from
+        if step == self._initial_step:
+            return
+
+        if step > 0 and step % self.every_n_steps == 0:
             path = self.checkpoint_dir / f"step{step}.ckpt"
-            trainer.save_checkpoint(str(path))
-            print(f"[CKPT] Saved checkpoint at step {step}: {path}", file=sys.stderr)
+            if not path.exists():
+                trainer.save_checkpoint(str(path))
+                print(f"[CKPT] Saved checkpoint at step {step}: {path}", file=sys.stderr)
 
     def on_train_end(self, trainer, pl_module):
         """Save final checkpoint."""
@@ -110,7 +117,7 @@ class CheckpointAtStepsCallback(Callback):
             print(f"[CKPT] Saved final checkpoint: {path}", file=sys.stderr)
 
 
-def setup_callbacks(config: dict, output_dir: Path, max_steps: int, grad_accum: int) -> list:
+def setup_callbacks(config: dict, output_dir: Path, max_steps: int) -> list:
     """Set up training callbacks."""
     ckpt_config = config.get("checkpoint", {})
     logging_config = config.get("logging", {})
@@ -122,10 +129,9 @@ def setup_callbacks(config: dict, output_dir: Path, max_steps: int, grad_accum: 
         RichProgressBar(),
         LearningRateMonitor(logging_interval="step"),
         StopAtStepsCallback(max_steps),
-        LogToFileCallback(output_dir / "training_log.txt", grad_accum=grad_accum, every_n_steps=log_every_n_steps),
+        LogToFileCallback(output_dir / "training_log.txt", every_n_steps=log_every_n_steps),
         CheckpointAtStepsCallback(
             checkpoint_dir=checkpoint_dir,
-            grad_accum=grad_accum,
             every_n_steps=save_every_n_steps,
             save_last=ckpt_config.get("save_last", True),
         ),
@@ -164,12 +170,12 @@ def setup_trainer(config: dict, output_dir: Path) -> Trainer:
     grad_accum = training_config.get("gradient_accumulation", 1)
     max_steps = compute_max_steps(training_config)
 
-    callbacks = setup_callbacks(config, output_dir, max_steps, grad_accum)
+    callbacks = setup_callbacks(config, output_dir, max_steps)
     logger = TensorBoardLogger(save_dir=output_dir, name="logs")
 
     trainer = Trainer(
         # Training
-        max_steps=max_steps,
+        max_epochs=-1,  # StopAtStepsCallback handles stopping
         gradient_clip_val=training_config.get("max_grad_norm", 1.0),
         accumulate_grad_batches=grad_accum,
         # Hardware

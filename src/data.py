@@ -109,23 +109,24 @@ class OffsetLocator:
 
 
 class ResumableSampler(Sampler):
-    """Sequential sampler that can resume from a saved position."""
+    """Sequential sampler that can resume from a saved position.
+
+    Yields indices starting from start_index, wrapping around to 0
+    when reaching the end of the dataset.
+    """
 
     def __init__(self, data_source, start_index: int = 0):
         self.data_source = data_source
         self.start_index = start_index
 
     def __iter__(self):
-        return iter(range(self.start_index, len(self.data_source)))
+        n = len(self.data_source)
+        # Start from saved position, wrap around
+        for i in range(n):
+            yield (self.start_index + i) % n
 
     def __len__(self):
-        return len(self.data_source) - self.start_index
-
-    def state_dict(self):
-        return {"start_index": self.start_index}
-
-    def load_state_dict(self, state_dict):
-        self.start_index = state_dict["start_index"]
+        return len(self.data_source)
 
 
 class PackedTokenDataset(TorchDataset):

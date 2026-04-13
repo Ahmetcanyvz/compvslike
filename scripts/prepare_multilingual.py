@@ -174,11 +174,11 @@ def main(
         else:
             download_language(lang, dataset_name, config_name, lang_tokens, raw_dir)
 
-    # Step 2: Merge all languages into combined train/val/test
-    console.print("\n[bold]Step 2: Merging languages[/bold]")
+    # Step 2: Merge train and val (test stays per-language for separate evaluation)
+    console.print("\n[bold]Step 2: Merging languages (train + val only, test stays per-language)[/bold]")
     from datasets import concatenate_datasets
 
-    for split in ["train", "val", "test"]:
+    for split in ["train", "val"]:
         merged_dir = raw_dir / "merged" / split
         if merged_dir.exists():
             console.print(f"[yellow]Merged {split} already exists, skipping[/yellow]")
@@ -194,7 +194,6 @@ def main(
 
         if all_docs:
             merged = concatenate_datasets(all_docs)
-            # Shuffle the merged dataset
             merged = merged.shuffle(seed=SEED)
             merged_dir.parent.mkdir(parents=True, exist_ok=True)
             merged.save_to_disk(str(merged_dir))
@@ -219,7 +218,8 @@ def main(
 
         tok_output.mkdir(parents=True, exist_ok=True)
 
-        for split in ["train", "val", "test"]:
+        # Tokenize merged train and val
+        for split in ["train", "val"]:
             merged_path = raw_dir / "merged" / split
             if not merged_path.exists():
                 console.print(f"  [yellow]{split} not found, skipping[/yellow]")
@@ -233,6 +233,26 @@ def main(
             console.print(f"    {len(tok_ds):,} docs, {total_toks:,} tokens ({total_toks / 1e9:.2f}B)")
 
             tok_ds.save_to_disk(str(tok_output / split))
+
+        # Tokenize test per-language (for separate evaluation)
+        for lang in LANGUAGES:
+            lang_test = raw_dir / lang / "test"
+            if not lang_test.exists():
+                continue
+
+            test_out = tok_output / f"test_{lang}"
+            if test_out.exists():
+                console.print(f"  [yellow]test_{lang} already tokenized, skipping[/yellow]")
+                continue
+
+            console.print(f"  Tokenizing test_{lang}...")
+            raw_ds = load_from_disk(str(lang_test))
+            tok_ds = tokenize_split(raw_ds, tok, num_proc)
+
+            total_toks = sum(len(x) for x in tok_ds["input_ids"])
+            console.print(f"    {len(tok_ds):,} docs, {total_toks:,} tokens ({total_toks / 1e9:.2f}B)")
+
+            tok_ds.save_to_disk(str(test_out))
 
     console.print(f"\n[green bold]All done![/green bold]")
 

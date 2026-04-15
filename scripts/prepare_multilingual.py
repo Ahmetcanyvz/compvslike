@@ -140,53 +140,44 @@ def tokenize_split(raw_dataset, tokenizer, num_proc):
 def main(
     tokenizer: list[str] = typer.Option(..., "--tokenizer", "-t", help="Path(s) to tokenizer(s)"),
     output_dir: Path = typer.Option("data/multilingual", "--output-dir", "-o"),
+    raw_data_dir: Optional[Path] = typer.Option(None, "--raw-data-dir", help="Existing multilingual raw data dir (skip download)"),
     total_tokens: int = typer.Option(2_000_000_000, "--total-tokens"),
     num_proc: int = typer.Option(8, "--num-proc"),
     eng_raw_dir: Optional[Path] = typer.Option(None, "--eng-raw-dir", help="Existing English raw data dir (reuse val/test)"),
 ) -> None:
     """Download multilingual data and tokenize."""
 
-    raw_dir = output_dir / "raw"
+    raw_dir = raw_data_dir if raw_data_dir and raw_data_dir.exists() else output_dir / "raw"
+    merge_dir = output_dir / "merged"
 
-    # Step 1: Download raw data per language
-    console.print("[bold]Step 1: Downloading raw data[/bold]")
-    for lang, (dataset_name, config_name, pct) in LANGUAGES.items():
-        lang_tokens = int(total_tokens * pct)
-
+    # Build per-language raw data paths
+    lang_raw_paths = {}
+    for lang in LANGUAGES:
         if lang == "eng" and eng_raw_dir and eng_raw_dir.exists():
-            # Reuse existing English val/test, download only train
-            eng_out = raw_dir / "eng"
-            if not eng_out.exists():
-                eng_out.mkdir(parents=True, exist_ok=True)
-                # Copy val/test from existing
-                import shutil
-                for split in ["val", "test"]:
-                    src = eng_raw_dir / split
-                    dst = eng_out / split
-                    if src.exists() and not dst.exists():
-                        shutil.copytree(str(src), str(dst))
-                        console.print(f"  Copied English {split} from {src}")
-
-            # Download English train with target tokens
-            train_dir = eng_out / "train"
-            if not train_dir.exists():
-                download_language("eng", dataset_name, config_name, lang_tokens, raw_dir)
+            lang_raw_paths[lang] = eng_raw_dir
+            console.print(f"  {lang}: using existing data from {eng_raw_dir}")
+        elif (raw_dir / lang).exists():
+            lang_raw_paths[lang] = raw_dir / lang
+            console.print(f"  {lang}: using existing data from {raw_dir / lang}")
         else:
-            download_language(lang, dataset_name, config_name, lang_tokens, raw_dir)
+            # Download if not found
+            lang_tokens = int(total_tokens * LANGUAGES[lang][2])
+            download_language(lang, LANGUAGES[lang][0], LANGUAGES[lang][1], lang_tokens, raw_dir)
+            lang_raw_paths[lang] = raw_dir / lang
 
     # Step 2: Merge train and val (test stays per-language for separate evaluation)
     console.print("\n[bold]Step 2: Merging languages (train + val only, test stays per-language)[/bold]")
     from datasets import concatenate_datasets
 
     for split in ["train", "val"]:
-        merged_dir = raw_dir / "merged" / split
-        if merged_dir.exists():
+        merged_split_dir = merge_dir / split
+        if merged_split_dir.exists():
             console.print(f"[yellow]Merged {split} already exists, skipping[/yellow]")
             continue
 
         all_docs = []
-        for lang in LANGUAGES:
-            lang_split = raw_dir / lang / split
+        for lang, lang_path in lang_raw_paths.items():
+            lang_split = lang_path / split
             if lang_split.exists():
                 ds = load_from_disk(str(lang_split))
                 console.print(f"  {lang}/{split}: {len(ds):,} documents")
@@ -195,8 +186,8 @@ def main(
         if all_docs:
             merged = concatenate_datasets(all_docs)
             merged = merged.shuffle(seed=SEED)
-            merged_dir.parent.mkdir(parents=True, exist_ok=True)
-            merged.save_to_disk(str(merged_dir))
+            merged_split_dir.parent.mkdir(parents=True, exist_ok=True)
+            merged.save_to_disk(str(merged_split_dir))
             console.print(f"  Merged {split}: {len(merged):,} documents")
 
     # Step 3: Tokenize with each tokenizer
@@ -220,7 +211,7 @@ def main(
 
         # Tokenize merged train and val
         for split in ["train", "val"]:
-            merged_path = raw_dir / "merged" / split
+            merged_path = merge_dir / split
             if not merged_path.exists():
                 console.print(f"  [yellow]{split} not found, skipping[/yellow]")
                 continue
@@ -235,8 +226,8 @@ def main(
             tok_ds.save_to_disk(str(tok_output / split))
 
         # Tokenize test per-language (for separate evaluation)
-        for lang in LANGUAGES:
-            lang_test = raw_dir / lang / "test"
+        for lang, lang_path in lang_raw_paths.items():
+            lang_test = lang_path / "test"
             if not lang_test.exists():
                 continue
 

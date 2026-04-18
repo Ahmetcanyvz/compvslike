@@ -180,7 +180,22 @@ def main(
             lang_split = lang_path / split
             if lang_split.exists():
                 ds = load_from_disk(str(lang_split))
-                console.print(f"  {lang}/{split}: {len(ds):,} documents")
+
+                # For English train, also load train_extra chunks to get ~10B tokens
+                if lang == "eng" and split == "train":
+                    extra_dir = lang_path / "train_extra"
+                    if extra_dir.exists():
+                        chunk_paths = sorted(extra_dir.glob("chunk_*"))
+                        if chunk_paths:
+                            console.print(f"  {lang}/{split}: {len(ds):,} docs + loading extra chunks...")
+                            extra_datasets = [load_from_disk(str(p)) for p in chunk_paths]
+                            ds = concatenate_datasets([ds] + extra_datasets)
+                            # Take ~50% to get ~10B tokens from ~20B total
+                            target_docs = len(ds) // 2
+                            ds = ds.select(range(target_docs))
+                            console.print(f"  {lang}/{split}: trimmed to {len(ds):,} docs (~10B tokens)")
+                else:
+                    console.print(f"  {lang}/{split}: {len(ds):,} documents")
                 all_docs.append(ds)
 
         if all_docs:

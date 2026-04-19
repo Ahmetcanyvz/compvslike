@@ -133,6 +133,7 @@ def tokenize_split(raw_dataset, tokenizer, num_proc):
         num_proc=num_proc,
         remove_columns=["text"],
         desc="Tokenizing",
+        writer_batch_size=5000,
     )
 
 
@@ -235,10 +236,9 @@ def main(
             raw_ds = load_from_disk(str(merged_path))
             tok_ds = tokenize_split(raw_ds, tok, num_proc)
 
-            total_toks = sum(len(x) for x in tok_ds["input_ids"])
-            console.print(f"    {len(tok_ds):,} docs, {total_toks:,} tokens ({total_toks / 1e9:.2f}B)")
-
+            console.print(f"    {len(tok_ds):,} docs tokenized, saving...")
             tok_ds.save_to_disk(str(tok_output / split))
+            console.print(f"    Saved to {tok_output / split}")
 
         # Tokenize test per-language (for separate evaluation)
         for lang, lang_path in lang_raw_paths.items():

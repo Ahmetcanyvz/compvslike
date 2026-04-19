@@ -237,7 +237,7 @@ def main(
             tok_ds = tokenize_split(raw_ds, tok, num_proc)
 
             tok_ds.save_to_disk(str(tok_output / split))
-            total_toks = sum(len(x) for x in tok_ds["input_ids"])
+            total_toks = sum(sum(len(x) for x in batch["input_ids"]) for batch in tok_ds.iter(batch_size=1000))
             console.print(f"    {len(tok_ds):,} docs, {total_toks:,} tokens ({total_toks / 1e9:.2f}B)")
 
         # Tokenize test per-language (for separate evaluation)
@@ -255,7 +255,7 @@ def main(
             raw_ds = load_from_disk(str(lang_test))
             tok_ds = tokenize_split(raw_ds, tok, num_proc)
 
-            total_toks = sum(len(x) for x in tok_ds["input_ids"])
+            total_toks = sum(sum(len(x) for x in batch["input_ids"]) for batch in tok_ds.iter(batch_size=1000))
             console.print(f"    {len(tok_ds):,} docs, {total_toks:,} tokens ({total_toks / 1e9:.2f}B)")
 
             tok_ds.save_to_disk(str(test_out))

@@ -36,10 +36,8 @@ eval_model() {
     echo "[GPU ${gpu}] Done: $model"
 }
 
-eval_model 0 "me340M-tied_bpe-128k_7Btok_seed42" "bpe-128k" &
-eval_model 1 "me340M-tied_compmax-128k_7Btok_seed42" "compmax-128k" &
-eval_model 2 "me340M-tied_greedyll-exact-128k_7Btok_seed42" "greedyll-exact-128k" &
-eval_model 3 "me340M-tied_unigramlm-128k_7Btok_seed42" "unigramlm-128k" &
-
-wait
+eval_model 0 "me340M-tied_bpe-128k_7Btok_seed42" "bpe-128k"
+eval_model 0 "me340M-tied_compmax-128k_7Btok_seed42" "compmax-128k"
+eval_model 0 "me340M-tied_greedyll-exact-128k_7Btok_seed42" "greedyll-exact-128k"
+eval_model 0 "me340M-tied_unigramlm-128k_7Btok_seed42" "unigramlm-128k"
 echo "=== All done ==="

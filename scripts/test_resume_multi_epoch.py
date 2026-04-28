@@ -144,6 +144,16 @@ def run_clean() -> None:
         print(f"[rank0] saved {ckpt}")
 
 
+def run_baseline() -> None:
+    """Train from scratch all the way to STEPS_FINAL — reference for comparison."""
+    model = TinyModel()
+    dm = TestDataModule()
+    trainer = make_trainer(STEPS_FINAL)
+    trainer.fit(model, datamodule=dm)
+    rank = trainer.global_rank
+    write_log(rank, "baseline", model.seen_indices)
+
+
 def run_resume() -> None:
     ckpt = CKPT_DIR / "mid_epoch.ckpt"
     state = torch.load(str(ckpt), map_location="cpu", weights_only=False)
@@ -229,6 +239,36 @@ def verify() -> None:
             all_ok = False
     print()
 
+    # CRITICAL CHECK: clean+resume must equal baseline (from-scratch run).
+    # This validates that resume sees EXACTLY the same data as if no resume happened.
+    print("--- Baseline equivalence check ---")
+    baseline_all = []
+    try:
+        for r in range(4):
+            b = json.loads((LOG_DIR / f"baseline_rank{r}.json").read_text())
+            baseline_all.append(b)
+    except FileNotFoundError:
+        print("(no baseline run found — skip --phase baseline to compare)")
+        baseline_all = None
+
+    if baseline_all is not None:
+        baseline_ok = True
+        for r in range(4):
+            combined = clean_all[r] + resume_all[r]
+            if combined == baseline_all[r]:
+                print(f"✅ rank{r}: clean+resume matches baseline ({len(combined)} indices)")
+            else:
+                # Find first divergence
+                for i, (c, b) in enumerate(zip(combined, baseline_all[r])):
+                    if c != b:
+                        print(f"❌ rank{r}: divergence at index {i}: combined={c}, baseline={b}")
+                        break
+                if len(combined) != len(baseline_all[r]):
+                    print(f"❌ rank{r}: length mismatch combined={len(combined)} baseline={len(baseline_all[r])}")
+                baseline_ok = False
+        all_ok = all_ok and baseline_ok
+
+    print()
     if all_ok:
         print("✅✅ PASS — multi-epoch resume works correctly")
     else:
@@ -237,12 +277,14 @@ def verify() -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--phase", choices=["clean", "resume", "verify"], required=True)
+    parser.add_argument("--phase", choices=["clean", "resume", "baseline", "verify"], required=True)
     args = parser.parse_args()
     if args.phase == "clean":
         run_clean()
     elif args.phase == "resume":
         run_resume()
+    elif args.phase == "baseline":
+        run_baseline()
     else:
         verify()
 

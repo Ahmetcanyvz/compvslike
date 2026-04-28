@@ -94,8 +94,10 @@ def make_dataloader(skip: int = 0) -> DataLoader:
     ds = IndexDataset()
     rank = int(os.environ.get("RANK", "0"))
     world_size = int(os.environ.get("WORLD_SIZE", "1"))
+    # shuffle=False: deterministic per-rank order independent of epoch.
+    # Real training has shuffle baked into the dataset itself (PackedTokenDataset).
     sampler = torch.utils.data.distributed.DistributedSampler(
-        ds, num_replicas=world_size, rank=rank, shuffle=True, seed=42, drop_last=False,
+        ds, num_replicas=world_size, rank=rank, shuffle=False, drop_last=False,
     )
     bs = SkipBatchSampler(sampler, batch_size=BATCH_SIZE, drop_last=True, skip_batches=skip)
     return DataLoader(ds, batch_sampler=bs, num_workers=0)

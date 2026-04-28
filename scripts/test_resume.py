@@ -120,9 +120,10 @@ def run_fresh() -> None:
     trainer.fit(model, train_dataloaders=make_dataloader(skip=0))
     rank = trainer.global_rank
     write_log(rank, "fresh", model.seen_indices)
+    # save_checkpoint is a collective — must be called on all ranks
+    ckpt = CKPT_DIR / "step4.ckpt"
+    trainer.save_checkpoint(str(ckpt))
     if rank == 0:
-        ckpt = CKPT_DIR / "step4.ckpt"
-        trainer.save_checkpoint(str(ckpt))
         print(f"[rank0] saved {ckpt}")
 
 

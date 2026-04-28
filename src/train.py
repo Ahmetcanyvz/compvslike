@@ -194,6 +194,8 @@ def setup_trainer(config: dict, output_dir: Path) -> Trainer:
         enable_checkpointing=True,
         enable_progress_bar=True,
         enable_model_summary=True,
+        # Custom DistributedSampler in DataModule so SkipBatchSampler survives resume
+        use_distributed_sampler=False,
     )
 
     return trainer

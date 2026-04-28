@@ -390,15 +390,26 @@ class DataModule(LightningDataModule):
 
         skip = getattr(self, "_skip_batches", 0)
         kwargs = self._dataloader_kwargs()
+        kwargs.pop("drop_last", None)
 
-        if skip > 0:
-            kwargs.pop("drop_last", None)
+        # Manually build DistributedSampler so SkipBatchSampler's skip_batches
+        # survives Lightning resume. Requires Trainer(use_distributed_sampler=False).
+        # PackedTokenDataset already shuffles deterministically, so shuffle=False here.
+        if torch.distributed.is_available() and torch.distributed.is_initialized():
+            sampler = torch.utils.data.distributed.DistributedSampler(
+                self.train_ds,
+                num_replicas=torch.distributed.get_world_size(),
+                rank=torch.distributed.get_rank(),
+                shuffle=False,
+                drop_last=False,
+            )
+        else:
             sampler = torch.utils.data.SequentialSampler(self.train_ds)
-            batch_sampler = SkipBatchSampler(sampler, batch_size=self.batch_size, drop_last=True, skip_batches=skip)
-            print(f"Dataloader: skipping {skip} batches, {len(batch_sampler)} remaining")
-            return DataLoader(self.train_ds, batch_sampler=batch_sampler, **kwargs)
 
-        return DataLoader(self.train_ds, batch_size=self.batch_size, **kwargs)
+        batch_sampler = SkipBatchSampler(sampler, batch_size=self.batch_size, drop_last=True, skip_batches=skip)
+        if skip > 0:
+            print(f"Dataloader: skipping {skip} batches, {len(batch_sampler)} remaining")
+        return DataLoader(self.train_ds, batch_sampler=batch_sampler, **kwargs)
 
     def val_dataloader(self) -> DataLoader:
         if self.val_ds is None:

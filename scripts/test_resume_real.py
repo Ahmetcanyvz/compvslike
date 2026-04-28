@@ -61,8 +61,7 @@ class SkipBatchSampler(torch.utils.data.BatchSampler):
                 yield batch
 
     def __len__(self):
-        skip = 0 if self._consumed else self.skip_batches
-        return max(0, super().__len__() - skip)
+        return super().__len__()
 
 
 class TestDataModule(LightningDataModule):

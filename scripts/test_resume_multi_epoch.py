@@ -66,10 +66,10 @@ class SkipBatchSampler(torch.utils.data.BatchSampler):
             print(f"[DEBUG iter#{self._iter_count}] yielded {yielded} batches (out of {super().__len__()} super, skip={skip})", flush=True)
 
     def __len__(self):
-        skip = 0 if self._consumed else self.skip_batches
-        result = max(0, super().__len__() - skip)
+        # Always return total epoch length; Lightning subtracts batch_progress itself.
+        result = super().__len__()
         if torch.distributed.is_initialized() and torch.distributed.get_rank() == self._DEBUG_RANK:
-            print(f"[DEBUG __len__] _consumed={self._consumed}, skip={skip}, returning {result}", flush=True)
+            print(f"[DEBUG __len__] _consumed={self._consumed}, returning {result}", flush=True)
         return result
 
 

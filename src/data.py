@@ -38,8 +38,10 @@ class SkipBatchSampler(torch.utils.data.BatchSampler):
                 yield batch
 
     def __len__(self):
-        skip = 0 if self._consumed else self.skip_batches
-        return max(0, super().__len__() - skip)
+        # Always return the full epoch length. Lightning tracks resume position
+        # via batch_progress.completed and subtracts it itself; if we also subtract
+        # skip_batches here, Lightning would double-count and end the epoch early.
+        return super().__len__()
 
 
 class DataConfig(BaseModel):

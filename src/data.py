@@ -19,19 +19,27 @@ except ImportError:
 
 
 class SkipBatchSampler(torch.utils.data.BatchSampler):
-    """BatchSampler that skips the first N batches. Used for mid-epoch resume."""
+    """BatchSampler that skips the first N batches on the FIRST iteration only.
+
+    For mid-epoch resume: skip data already seen before the resume checkpoint,
+    then iterate normally for every subsequent epoch (multi-epoch training).
+    """
 
     def __init__(self, sampler, batch_size, drop_last=True, skip_batches: int = 0):
         super().__init__(sampler, batch_size, drop_last)
         self.skip_batches = skip_batches
+        self._consumed = False
 
     def __iter__(self):
+        skip = 0 if self._consumed else self.skip_batches
+        self._consumed = True
         for i, batch in enumerate(super().__iter__()):
-            if i >= self.skip_batches:
+            if i >= skip:
                 yield batch
 
     def __len__(self):
-        return super().__len__() - self.skip_batches
+        skip = 0 if self._consumed else self.skip_batches
+        return max(0, super().__len__() - skip)
 
 
 class DataConfig(BaseModel):

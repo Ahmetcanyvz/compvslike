@@ -89,12 +89,16 @@ class TinyModel(LightningModule):
 
 
 def make_dataloader(skip: int = 0) -> DataLoader:
+    """Build dataloader with manual DistributedSampler so SkipBatchSampler
+    survives Lightning resume (set use_distributed_sampler=False on Trainer)."""
     ds = IndexDataset()
-    if skip > 0:
-        sampler = torch.utils.data.SequentialSampler(ds)
-        bs = SkipBatchSampler(sampler, batch_size=BATCH_SIZE, drop_last=True, skip_batches=skip)
-        return DataLoader(ds, batch_sampler=bs, num_workers=0)
-    return DataLoader(ds, batch_size=BATCH_SIZE, shuffle=False, drop_last=True, num_workers=0)
+    rank = int(os.environ.get("RANK", "0"))
+    world_size = int(os.environ.get("WORLD_SIZE", "1"))
+    sampler = torch.utils.data.distributed.DistributedSampler(
+        ds, num_replicas=world_size, rank=rank, shuffle=True, seed=42, drop_last=False,
+    )
+    bs = SkipBatchSampler(sampler, batch_size=BATCH_SIZE, drop_last=True, skip_batches=skip)
+    return DataLoader(ds, batch_sampler=bs, num_workers=0)
 
 
 def write_log(rank: int, phase: str, indices: list[int]) -> None:
@@ -116,6 +120,7 @@ def run_fresh() -> None:
         enable_model_summary=False,
         logger=False,
         default_root_dir=str(ROOT),
+        use_distributed_sampler=False,
     )
     trainer.fit(model, train_dataloaders=make_dataloader(skip=0))
     rank = trainer.global_rank
@@ -153,6 +158,7 @@ def run_resume() -> None:
         enable_model_summary=False,
         logger=False,
         default_root_dir=str(ROOT),
+        use_distributed_sampler=False,
     )
     trainer.fit(
         model,

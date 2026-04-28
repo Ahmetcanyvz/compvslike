@@ -31,7 +31,7 @@ class SkipBatchSampler(torch.utils.data.BatchSampler):
                 yield batch
 
     def __len__(self):
-        return max(0, super().__len__() - self.skip_batches)
+        return super().__len__() - self.skip_batches
 
 
 class DataConfig(BaseModel):

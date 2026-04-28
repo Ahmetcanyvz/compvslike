@@ -315,13 +315,8 @@ def train(
         ckpt = torch.load(str(resume), map_location="cpu", weights_only=False)
         batch_completed = ckpt.get("loops", {}).get("fit_loop", {}).get("epoch_loop.batch_progress", {}).get("total", {}).get("completed", 0)
         if batch_completed > 0:
-            # batch_completed is global across all ranks; SkipBatchSampler runs after
-            # DistributedSampler shards data, so skip count is per-rank.
-            devices_cfg = config.get("hardware", {}).get("devices", 1)
-            num_gpus = max(1, devices_cfg if isinstance(devices_cfg, int) else torch.cuda.device_count())
-            per_rank_skip = batch_completed // num_gpus
-            console.print(f"[blue]Setting dataloader to skip {per_rank_skip} batches per rank (global: {batch_completed}, gpus: {num_gpus})[/blue]")
-            data_module._skip_batches = per_rank_skip
+            console.print(f"[blue]Setting dataloader to skip {batch_completed} batches[/blue]")
+            data_module._skip_batches = batch_completed
         del ckpt
 
     # Train

@@ -43,21 +43,34 @@ class IndexDataset(Dataset):
 
 
 class SkipBatchSampler(torch.utils.data.BatchSampler):
+    _DEBUG_RANK = 0
+
     def __init__(self, sampler, batch_size, drop_last=True, skip_batches: int = 0):
         super().__init__(sampler, batch_size, drop_last)
         self.skip_batches = skip_batches
         self._consumed = False
+        self._iter_count = 0
 
     def __iter__(self):
         skip = 0 if self._consumed else self.skip_batches
+        self._iter_count += 1
+        if torch.distributed.is_initialized() and torch.distributed.get_rank() == self._DEBUG_RANK:
+            print(f"[DEBUG iter#{self._iter_count}] _consumed={self._consumed}, skip={skip}, super_len={super().__len__()}", flush=True)
         self._consumed = True
+        yielded = 0
         for i, batch in enumerate(super().__iter__()):
             if i >= skip:
                 yield batch
+                yielded += 1
+        if torch.distributed.is_initialized() and torch.distributed.get_rank() == self._DEBUG_RANK:
+            print(f"[DEBUG iter#{self._iter_count}] yielded {yielded} batches (out of {super().__len__()} super, skip={skip})", flush=True)
 
     def __len__(self):
         skip = 0 if self._consumed else self.skip_batches
-        return max(0, super().__len__() - skip)
+        result = max(0, super().__len__() - skip)
+        if torch.distributed.is_initialized() and torch.distributed.get_rank() == self._DEBUG_RANK:
+            print(f"[DEBUG __len__] _consumed={self._consumed}, skip={skip}, returning {result}", flush=True)
+        return result
 
 
 class TestDataModule(LightningDataModule):

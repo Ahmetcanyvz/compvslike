@@ -41,15 +41,31 @@ def main(
                 row["task"]: round(row["accuracy"], 4) for row in per_task.iter_rows(named=True)
             }
 
-        # BPB
+        # BPB (English-only model: bpb.parquet)
         bpb = model_dir / "bpb.parquet"
         if bpb.exists():
             df = pl.read_parquet(bpb)
             total_loss = df["loss_nats"].sum()
             total_bytes = df["num_bytes"].sum()
-            entry["bpb"] = round(total_loss / total_bytes / 0.6931472, 4)  # nats to bits
+            entry["bpb"] = round(total_loss / total_bytes / 0.6931472, 4)
             entry["perplexity"] = round(2 ** entry["bpb"], 2)
             entry["num_docs"] = len(df)
+
+        # Per-language BPB (multilingual: bpb_<lang>.parquet)
+        per_lang = {}
+        for lang_file in sorted(model_dir.glob("bpb_*.parquet")):
+            lang = lang_file.stem.replace("bpb_", "")
+            df = pl.read_parquet(lang_file)
+            total_loss = df["loss_nats"].sum()
+            total_bytes = df["num_bytes"].sum()
+            bpb_val = round(total_loss / total_bytes / 0.6931472, 4)
+            per_lang[lang] = {
+                "bpb": bpb_val,
+                "perplexity": round(2 ** bpb_val, 2),
+                "num_docs": len(df),
+            }
+        if per_lang:
+            entry["bpb_per_language"] = per_lang
 
         if entry:
             results[name] = entry

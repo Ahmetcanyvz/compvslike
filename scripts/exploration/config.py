@@ -29,27 +29,27 @@ def _english_paths():
     tok_root = ROOT / "tokenizers"
     data_root = ROOT / "data"
     tokenizers = {
-        "bpe_count-128k": tok_root / "bpe_count-128k",
+        "bpe-128k": tok_root / "bpe-128k",
         "greedyll-exact-128k": tok_root / "greedyll-exact-128k",
         "greedyll-approx-128k": tok_root / "greedyll-approx-128k",
         "unigramlm-128k": tok_root / "unigramlm-128k",
         "compmax-128k": tok_root / "compmax-128k",
     }
     data = {
-        "bpe_count-128k": data_root / "fineweb-edu-bpe_count-128k",
+        "bpe-128k": data_root / "fineweb-edu-bpe-128k",
         "greedyll-exact-128k": data_root / "fineweb-edu-greedyll-exact-128k",
         "greedyll-approx-128k": data_root / "fineweb-edu-greedyll-approx-128k",
         "unigramlm-128k": data_root / "fineweb-edu-unigramlm-128k",
         "compmax-128k": data_root / "fineweb-edu-compmax-128k",
     }
     short = {
-        "bpe_count-128k": "BPE",
+        "bpe-128k": "BPE",
         "greedyll-exact-128k": "Exact",
         "greedyll-approx-128k": "Approx",
         "unigramlm-128k": "Unigram",
         "compmax-128k": "CompMax",
     }
-    bpe_methods = ["bpe_count-128k", "greedyll-exact-128k", "greedyll-approx-128k"]
+    bpe_methods = ["bpe-128k", "greedyll-exact-128k", "greedyll-approx-128k"]
     raw_test = data_root / "fineweb-edu-raw" / "test"
     return tokenizers, data, short, bpe_methods, raw_test
 

@@ -2,8 +2,14 @@
 """Compare how different tokenizers split the same text."""
 
 import argparse
-from transformers import AutoTokenizer
+from transformers import PreTrainedTokenizerFast
 from config import TOKENIZER_PATHS, SHORT, ALL_METHODS
+
+
+def load_tokenizer(path):
+    """Load a fast tokenizer directly from tokenizer.json, bypassing
+    AutoTokenizer's slow->fast conversion path which fails on some configs."""
+    return PreTrainedTokenizerFast(tokenizer_file=f"{path}/tokenizer.json")
 
 
 DEFAULT_TEXTS = [

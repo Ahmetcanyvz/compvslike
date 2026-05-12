@@ -13,8 +13,8 @@
 #SBATCH --environment=lm_trainer_env
 
 # Usage: sbatch run_sbatch_eval_multiblimp.sh <TOK_NAME>
-# Evaluates one multilingual 1B model on MultiBLiMP for eng/deu/spa/tur.
-# (MultiBLiMP has no Chinese/cmn config, so Chinese is not covered.)
+# Evaluates one multilingual 1B model on MultiBLiMP (eng/deu/spa/tur) and
+# ZhoBLiMP (Chinese). MultiBLiMP has no cmn config, so Chinese uses ZhoBLiMP.
 # Example:
 #   sbatch run_sbatch_eval_multiblimp.sh bpe_count-multi-128k
 
@@ -55,5 +55,14 @@ for lang in "${LANGS[@]}"; do
         python -m src.eval_multiblimp "$checkpoint" "$tokenizer" "$lang" -o "$out_file"
     fi
 done
+
+# ZhoBLiMP for Chinese (MultiBLiMP has no cmn config)
+zho_out="$out_dir/zhoblimp.parquet"
+if [[ -f "$zho_out" ]]; then
+    echo "  [SKIP] zhoblimp done"
+else
+    echo "  [RUN] zhoblimp (cmn)..."
+    python -m src.eval_zhoblimp "$checkpoint" "$tokenizer" -o "$zho_out"
+fi
 
 echo "=== Done ==="

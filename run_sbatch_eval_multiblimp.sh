@@ -13,7 +13,8 @@
 #SBATCH --environment=lm_trainer_env
 
 # Usage: sbatch run_sbatch_eval_multiblimp.sh <TOK_NAME>
-# Evaluates one multilingual 1B model on MultiBLiMP for eng/deu/spa/tur/cmn.
+# Evaluates one multilingual 1B model on MultiBLiMP for eng/deu/spa/tur.
+# (MultiBLiMP has no Chinese/cmn config, so Chinese is not covered.)
 # Example:
 #   sbatch run_sbatch_eval_multiblimp.sh bpe_count-multi-128k
 
@@ -44,7 +45,7 @@ fi
 mkdir -p "$out_dir"
 echo "=== MultiBLiMP eval: $MODEL ==="
 
-LANGS=(eng deu spa tur cmn)
+LANGS=(eng deu spa tur)
 for lang in "${LANGS[@]}"; do
     out_file="$out_dir/multiblimp_${lang}.parquet"
     if [[ -f "$out_file" ]]; then

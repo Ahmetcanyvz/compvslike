@@ -67,6 +67,47 @@ def main(
         if per_lang:
             entry["bpb_per_language"] = per_lang
 
+        # MultiBLiMP per language (multiblimp_<lang>.parquet)
+        multiblimp = {}
+        for f in sorted(model_dir.glob("multiblimp_*.parquet")):
+            lang = f.stem.replace("multiblimp_", "")
+            df = pl.read_parquet(f)
+            overall = round(df["correct"].mean(), 4)
+            per_phen = (
+                df.group_by("phenomenon")
+                .agg(pl.col("correct").mean().alias("accuracy"))
+                .sort("phenomenon")
+            )
+            multiblimp[lang] = {
+                "overall": overall,
+                "per_phenomenon": {r["phenomenon"]: round(r["accuracy"], 4) for r in per_phen.iter_rows(named=True)},
+                "num_pairs": len(df),
+            }
+        if multiblimp:
+            entry["multiblimp"] = multiblimp
+
+        # ZhoBLiMP (zhoblimp.parquet)
+        zho = model_dir / "zhoblimp.parquet"
+        if zho.exists():
+            df = pl.read_parquet(zho)
+            overall = round(df["correct"].mean(), 4)
+            per_phen = (
+                df.group_by("phenomenon")
+                .agg(pl.col("correct").mean().alias("accuracy"))
+                .sort("phenomenon")
+            )
+            per_para = (
+                df.group_by("paradigm")
+                .agg(pl.col("correct").mean().alias("accuracy"))
+                .sort("paradigm")
+            )
+            entry["zhoblimp"] = {
+                "overall": overall,
+                "per_phenomenon": {r["phenomenon"]: round(r["accuracy"], 4) for r in per_phen.iter_rows(named=True)},
+                "per_paradigm": {r["paradigm"]: round(r["accuracy"], 4) for r in per_para.iter_rows(named=True)},
+                "num_pairs": len(df),
+            }
+
         if entry:
             results[name] = entry
             print(f"{name}: BLiMP={entry.get('blimp_overall', 'N/A')}, PPL={entry.get('perplexity', 'N/A')}")

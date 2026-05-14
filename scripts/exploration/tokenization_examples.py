@@ -39,7 +39,7 @@ def main():
     texts = args.text if args.text else DEFAULT_TEXTS
     names = args.tokenizers
 
-    tokenizers = {n: AutoTokenizer.from_pretrained(TOKENIZER_PATHS[n]) for n in names}
+    tokenizers = {n: load_tokenizer(TOKENIZER_PATHS[n]) for n in names}
 
     print("=" * 70)
     print("TOKENIZATION COMPARISON")

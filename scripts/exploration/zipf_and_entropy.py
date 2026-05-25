@@ -9,8 +9,10 @@ Zipf's coefficient and entropy analysis across all tokenizer methods.
 """
 
 import argparse
-import math
+import gc
 import json
+import math
+import os
 from collections import Counter
 from pathlib import Path
 from datasets import load_from_disk
@@ -19,34 +21,84 @@ from tqdm import tqdm
 from config import TOKENIZER_PATHS, DATA_PATHS, SHORT, ALL_METHODS, RAW_TEST_PATH, load_vocab
 
 
-def load_usage_counts(name, split):
-    """Return a Counter of {token_id: count} on the test split.
+COUNTS_CACHE_DIR = Path(os.environ.get(
+    "ZIPF_COUNTS_CACHE",
+    str(Path(__file__).resolve().parent.parent.parent / "exploration_results" / "_counts_cache"),
+))
 
-    Prefers pre-tokenized data at DATA_PATHS[name]/<split>. Falls back to
-    tokenizing the raw text at RAW_TEST_PATH on the fly using the tokenizer's
-    AutoTokenizer for tokenizers without pre-tokenized data (e.g., 8k/32k)."""
+
+def _cache_path(name, split):
+    return COUNTS_CACHE_DIR / f"{name}__{split}.json"
+
+
+def _save_counts(name, split, usage):
+    COUNTS_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = _cache_path(name, split).with_suffix(".json.tmp")
+    # JSON keys must be strings; store id->count.
+    with open(tmp, "w") as f:
+        json.dump({str(k): v for k, v in usage.items()}, f)
+    tmp.replace(_cache_path(name, split))
+
+
+def _load_counts(name, split):
+    p = _cache_path(name, split)
+    if not p.exists():
+        return None
+    with open(p) as f:
+        d = json.load(f)
+    return Counter({int(k): v for k, v in d.items()})
+
+
+def _tokenize_and_save(name, split):
+    """Stream the raw test split through this tokenizer and save a counts cache."""
     pre = Path(DATA_PATHS[name]) / split
     usage = Counter()
     if pre.exists():
         ds = load_from_disk(str(pre))
         for doc_ids in tqdm(ds["input_ids"], desc=f"  counting ({SHORT[name]}, pretok)", unit="doc"):
             usage.update(doc_ids)
-        return usage
-
-    # Fallback: tokenize raw text with this tokenizer via the low-level
-    # tokenizers library directly (avoids transformers' AutoTokenizer, which
-    # can pull in protobuf/sentencepiece for some configs).
-    from tokenizers import Tokenizer
-    tok = Tokenizer.from_file(f"{TOKENIZER_PATHS[name]}/tokenizer.json")
-    raw_ds = load_from_disk(RAW_TEST_PATH)
-    text_col = "text" if "text" in raw_ds.column_names else raw_ds.column_names[0]
-    BATCH = 1024
-    docs = raw_ds[text_col]
-    for i in tqdm(range(0, len(docs), BATCH), desc=f"  tokenizing ({SHORT[name]}, raw)", unit="batch"):
-        encs = tok.encode_batch(docs[i:i + BATCH])
-        for e in encs:
-            usage.update(e.ids)
+    else:
+        from tokenizers import Tokenizer
+        tok = Tokenizer.from_file(f"{TOKENIZER_PATHS[name]}/tokenizer.json")
+        raw_ds = load_from_disk(RAW_TEST_PATH)
+        text_col = "text" if "text" in raw_ds.column_names else raw_ds.column_names[0]
+        n = len(raw_ds)
+        BATCH = 256
+        pbar = tqdm(total=n, desc=f"  tokenizing ({SHORT[name]}, raw)", unit="doc")
+        batch = []
+        for ex in raw_ds:
+            batch.append(ex[text_col])
+            if len(batch) >= BATCH:
+                for e in tok.encode_batch(batch):
+                    usage.update(e.ids)
+                pbar.update(len(batch))
+                batch.clear()
+        if batch:
+            for e in tok.encode_batch(batch):
+                usage.update(e.ids)
+            pbar.update(len(batch))
+        pbar.close()
+        del tok, raw_ds
+        gc.collect()
+    _save_counts(name, split, usage)
     return usage
+
+
+def load_usage_counts(name, split, force=False):
+    """Return a Counter of {token_id: count} on the test split.
+
+    Uses a JSON counts cache to avoid re-tokenizing. The flow is:
+      1. If cache exists (and not forced), load and return it.
+      2. Otherwise tokenize, save the cache, free memory, and load fresh from disk.
+    Tokenization frees the in-memory dataset and tokenizer before continuing so
+    each call has a clean memory baseline."""
+    if not force:
+        cached = _load_counts(name, split)
+        if cached is not None:
+            return cached
+    _tokenize_and_save(name, split)
+    gc.collect()
+    return _load_counts(name, split)
 
 
 def fit_zipf(freq_values):
@@ -93,18 +145,32 @@ def main():
     parser.add_argument("--tokenizers", nargs="+", default=ALL_METHODS,
                         choices=ALL_METHODS)
     parser.add_argument("--split", type=str, default="test")
+    parser.add_argument("--force", action="store_true",
+                        help="Re-tokenize even if a counts cache exists.")
     args = parser.parse_args()
 
     names = args.tokenizers
 
-    # Load frequencies
+    # Phase 1: tokenize + cache counts for every tokenizer.
+    # Each iteration writes a counts JSON to disk and then drops
+    # the in-memory dataset/tokenizer before moving to the next.
+    for name in names:
+        print(f"[tokenize] {SHORT[name]}...", flush=True)
+        if not args.force and _cache_path(name, args.split).exists():
+            print(f"  cache exists at {_cache_path(name, args.split)}, skipping", flush=True)
+            continue
+        _tokenize_and_save(name, args.split)
+        gc.collect()
+
+    # Phase 2: load cached counts back in (small, just id->count maps) and
+    # compute the statistics.
     all_freqs = {}
     all_totals = {}
     all_vocab_sizes = {}
 
     for name in names:
-        print(f"Loading {SHORT[name]}...", flush=True)
-        usage = load_usage_counts(name, args.split)
+        print(f"[load] {SHORT[name]}...", flush=True)
+        usage = _load_counts(name, args.split)
         all_freqs[name] = list(usage.values())
         all_totals[name] = sum(usage.values())
         all_vocab_sizes[name] = len(load_vocab(TOKENIZER_PATHS[name]))

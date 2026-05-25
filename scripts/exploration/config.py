@@ -28,28 +28,28 @@ VARIANT = os.environ.get("EXPLORATION_VARIANT", "english")
 def _english_paths():
     tok_root = ROOT / "tokenizers"
     data_root = ROOT / "data"
-    tokenizers = {
-        "bpe-128k": tok_root / "bpe-128k",
-        "greedyll-exact-128k": tok_root / "greedyll-exact-128k",
-        "greedyll-approx-128k": tok_root / "greedyll-approx-128k",
-        "unigramlm-128k": tok_root / "unigramlm-128k",
-        "compmax-128k": tok_root / "compmax-128k",
+    methods = ["bpe", "greedyll-exact", "greedyll-approx", "unigramlm", "compmax"]
+    sizes = ["8k", "32k", "128k"]
+    short_names = {
+        "bpe": "BPE",
+        "greedyll-exact": "Exact",
+        "greedyll-approx": "Approx",
+        "unigramlm": "Unigram",
+        "compmax": "CompMax",
     }
-    data = {
-        "bpe-128k": data_root / "fineweb-edu-bpe-128k",
-        "greedyll-exact-128k": data_root / "fineweb-edu-greedyll-exact-128k",
-        "greedyll-approx-128k": data_root / "fineweb-edu-greedyll-approx-128k",
-        "unigramlm-128k": data_root / "fineweb-edu-unigramlm-128k",
-        "compmax-128k": data_root / "fineweb-edu-compmax-128k",
-    }
-    short = {
-        "bpe-128k": "BPE",
-        "greedyll-exact-128k": "Exact",
-        "greedyll-approx-128k": "Approx",
-        "unigramlm-128k": "Unigram",
-        "compmax-128k": "CompMax",
-    }
-    bpe_methods = ["bpe-128k", "greedyll-exact-128k", "greedyll-approx-128k"]
+    tokenizers = {}
+    data = {}
+    short = {}
+    for m in methods:
+        for s in sizes:
+            name = f"{m}-{s}"
+            tokenizers[name] = tok_root / name
+            data[name] = data_root / f"fineweb-edu-{name}"
+            short[name] = f"{short_names[m]}-{s}"
+    # Keep the legacy short labels for the 128k variants so existing logs/tables don't break.
+    for m in methods:
+        short[f"{m}-128k"] = short_names[m]
+    bpe_methods = [f"{m}-{s}" for m in ["bpe", "greedyll-exact", "greedyll-approx"] for s in sizes]
     raw_test = data_root / "fineweb-edu-raw" / "test"
     return tokenizers, data, short, bpe_methods, raw_test
 

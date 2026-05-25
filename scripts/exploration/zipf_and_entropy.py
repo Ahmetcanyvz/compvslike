@@ -12,9 +12,35 @@ import argparse
 import math
 import json
 from collections import Counter
+from pathlib import Path
 from datasets import load_from_disk
 import numpy as np
-from config import TOKENIZER_PATHS, DATA_PATHS, SHORT, ALL_METHODS, load_vocab
+from tqdm import tqdm
+from config import TOKENIZER_PATHS, DATA_PATHS, SHORT, ALL_METHODS, RAW_TEST_PATH, load_vocab
+
+
+def load_usage_counts(name, split):
+    """Return a Counter of {token_id: count} on the test split.
+
+    Prefers pre-tokenized data at DATA_PATHS[name]/<split>. Falls back to
+    tokenizing the raw text at RAW_TEST_PATH on the fly using the tokenizer's
+    AutoTokenizer for tokenizers without pre-tokenized data (e.g., 8k/32k)."""
+    pre = Path(DATA_PATHS[name]) / split
+    usage = Counter()
+    if pre.exists():
+        ds = load_from_disk(str(pre))
+        for doc_ids in tqdm(ds["input_ids"], desc=f"  counting ({SHORT[name]}, pretok)", unit="doc"):
+            usage.update(doc_ids)
+        return usage
+
+    # Fallback: tokenize raw text with this tokenizer.
+    from transformers import AutoTokenizer
+    tok = AutoTokenizer.from_pretrained(TOKENIZER_PATHS[name])
+    raw_ds = load_from_disk(RAW_TEST_PATH)
+    text_col = "text" if "text" in raw_ds.column_names else raw_ds.column_names[0]
+    for doc in tqdm(raw_ds[text_col], desc=f"  tokenizing ({SHORT[name]}, raw)", unit="doc"):
+        usage.update(tok.encode(doc, add_special_tokens=False))
+    return usage
 
 
 def fit_zipf(freq_values):
@@ -72,10 +98,7 @@ def main():
 
     for name in names:
         print(f"Loading {SHORT[name]}...", flush=True)
-        ds = load_from_disk(f"{DATA_PATHS[name]}/{args.split}")
-        usage = Counter()
-        for doc_ids in ds["input_ids"]:
-            usage.update(doc_ids)
+        usage = load_usage_counts(name, args.split)
         all_freqs[name] = list(usage.values())
         all_totals[name] = sum(usage.values())
         all_vocab_sizes[name] = len(load_vocab(TOKENIZER_PATHS[name]))

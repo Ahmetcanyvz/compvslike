@@ -13,6 +13,11 @@ import gc
 import json
 import math
 import os
+# Cap parallelism BEFORE importing tokenizers; on big login nodes the default
+# rayon pool will happily spawn ~one worker per CPU (288+) and each one keeps
+# scratch arenas that collectively run the process out of memory.
+os.environ.setdefault("RAYON_NUM_THREADS", "4")
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 from collections import Counter
 from pathlib import Path
 from datasets import load_from_disk

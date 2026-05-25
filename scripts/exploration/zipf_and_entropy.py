@@ -33,13 +33,19 @@ def load_usage_counts(name, split):
             usage.update(doc_ids)
         return usage
 
-    # Fallback: tokenize raw text with this tokenizer.
-    from transformers import AutoTokenizer
-    tok = AutoTokenizer.from_pretrained(TOKENIZER_PATHS[name])
+    # Fallback: tokenize raw text with this tokenizer via the low-level
+    # tokenizers library directly (avoids transformers' AutoTokenizer, which
+    # can pull in protobuf/sentencepiece for some configs).
+    from tokenizers import Tokenizer
+    tok = Tokenizer.from_file(f"{TOKENIZER_PATHS[name]}/tokenizer.json")
     raw_ds = load_from_disk(RAW_TEST_PATH)
     text_col = "text" if "text" in raw_ds.column_names else raw_ds.column_names[0]
-    for doc in tqdm(raw_ds[text_col], desc=f"  tokenizing ({SHORT[name]}, raw)", unit="doc"):
-        usage.update(tok.encode(doc, add_special_tokens=False))
+    BATCH = 1024
+    docs = raw_ds[text_col]
+    for i in tqdm(range(0, len(docs), BATCH), desc=f"  tokenizing ({SHORT[name]}, raw)", unit="batch"):
+        encs = tok.encode_batch(docs[i:i + BATCH])
+        for e in encs:
+            usage.update(e.ids)
     return usage
 
 

@@ -9,17 +9,19 @@ from pathlib import Path
 from datasets import load_from_disk
 
 ROOT = Path(os.environ.get("LM_TRAINER_ROOT", Path(__file__).resolve().parent.parent.parent))
-RAW = ROOT / "data" / "multilingual-raw"
+MULTI_RAW = ROOT / "data" / "multilingual-raw"
+ENG_RAW = ROOT / "data" / "fineweb-edu-raw"
 LANGS = ["eng", "deu", "spa", "tur", "cmn"]
-
-if not RAW.exists():
-    raise SystemExit(f"Multilingual raw dir not found at {RAW}")
 
 grand_total = 0
 print(f"{'Split':<10} {'docs':>10} {'bytes':>16}")
 print("-" * 40)
 for lang in LANGS:
-    split_dir = RAW / f"test_{lang}"
+    # eng test lives in fineweb-edu-raw/test; other langs in multilingual-raw/<lang>/test
+    if lang == "eng":
+        split_dir = ENG_RAW / "test"
+    else:
+        split_dir = MULTI_RAW / lang / "test"
     if not split_dir.exists():
         print(f"[skip] {split_dir} not found")
         continue

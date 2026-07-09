@@ -37,12 +37,18 @@ def main(
     output_dir: Path = typer.Option("data/multilingual-raw", "--output-dir", "-o"),
     tokens_per_lang: int = typer.Option(2_500_000_000, "--tokens-per-lang", help="Tokens per language"),
     min_tokens: int = typer.Option(50, "--min-tokens"),
+    lang: str = typer.Option(None, "--lang", help="Download only this language (deu/spa/tur/cmn). Default: all."),
 ) -> None:
     """Download German, Spanish, Turkish, Chinese from FineWeb-2."""
 
+    if lang is not None and lang not in LANGUAGES:
+        raise typer.BadParameter(f"Unknown language '{lang}'. Choose from: {', '.join(LANGUAGES)}")
+
+    selected = {lang: LANGUAGES[lang]} if lang is not None else LANGUAGES
+
     estimator = AutoTokenizer.from_pretrained("gpt2")
 
-    for lang, (dataset_name, config_name) in LANGUAGES.items():
+    for lang, (dataset_name, config_name) in selected.items():
         train_dir = output_dir / lang / "train"
         test_dir = output_dir / lang / "test"
 

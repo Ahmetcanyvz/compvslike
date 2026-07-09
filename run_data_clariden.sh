@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=data-prep
 #SBATCH --partition=normal
-#SBATCH --account=a139
+#SBATCH --account=a0229
 #SBATCH --time=12:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1

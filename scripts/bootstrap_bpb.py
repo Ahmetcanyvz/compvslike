@@ -116,7 +116,15 @@ def main(
 
     if output is not None:
         output.parent.mkdir(parents=True, exist_ok=True)
-        result.write_parquet(output)
+        suffix = output.suffix.lower()
+        if suffix == ".json":
+            result.write_json(output)
+        elif suffix in (".ndjson", ".jsonl"):
+            result.write_ndjson(output)
+        elif suffix == ".csv":
+            result.write_csv(output)
+        else:
+            result.write_parquet(output)
         console.print(f"[green]Wrote summary to {output}[/green]")
 
 

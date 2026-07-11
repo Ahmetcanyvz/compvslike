@@ -30,5 +30,6 @@ python scripts/prepare_multilingual.py \
     --raw-data-dir data/multilingual-raw \
     --total-tokens 20000000000 \
     --eng-raw-dir data/fineweb-edu-raw \
+    --num-proc 64 \
     --merge-only
 echo "=== Merge done ==="

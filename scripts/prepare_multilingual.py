@@ -209,7 +209,11 @@ def main(
             merged = concatenate_datasets(all_docs)
             merged = merged.shuffle(seed=SEED)
             merged_split_dir.parent.mkdir(parents=True, exist_ok=True)
-            merged.save_to_disk(str(merged_split_dir))
+            # shuffle makes save_to_disk read in random order (slow random I/O);
+            # flatten_indices materializes the shuffled order in parallel first,
+            # then the write is sequential. Output is identical (same seed-42 order).
+            merged = merged.flatten_indices(num_proc=num_proc)
+            merged.save_to_disk(str(merged_split_dir), num_proc=num_proc)
             console.print(f"  Merged {split}: {len(merged):,} documents")
 
     if merge_only:

@@ -58,8 +58,16 @@ def stream_documents(
     skip_docs: int = 0,
     uid_offset: int = 0,
     desc: str = "Collecting data",
+    batch_size: int = 1000,
 ) -> tuple[list[dict], int, int]:
     """Stream documents from FineWeb-Edu until reaching target token count.
+
+    The GPT-2 estimator is applied in batches (parallel across cores) purely for
+    speed. This is BIT-IDENTICAL to per-document encoding: batch encoding returns
+    the same per-document token ids (no padding, no cross-document interaction),
+    docs are processed strictly in stream order with the same min_tokens filter,
+    and collection stops at the exact same document (the first accepted doc that
+    makes total_tokens >= target_tokens); remaining buffered docs are discarded.
 
     Returns:
         (documents, total_tokens, total_streamed) where total_streamed includes skipped docs.
@@ -69,52 +77,59 @@ def stream_documents(
         split="train",
         streaming=True,
     )
+    it = iter(dataset)
 
     documents = []
     total_tokens = 0
     streamed = 0
 
+    # Skip phase (per-example, identical to original).
     if skip_docs > 0:
         pbar_skip = tqdm(total=skip_docs, unit="doc", desc="Skipping existing docs")
+        while streamed < skip_docs:
+            try:
+                next(it)
+            except StopIteration:
+                break
+            streamed += 1
+            pbar_skip.update(1)
+        pbar_skip.close()
+        console.print(f"Done skipping {skip_docs:,} docs. Collecting new data...")
 
     pbar = tqdm(total=target_tokens, unit="tok", desc=desc)
-
-    for example in dataset:
-        if streamed < skip_docs:
-            streamed += 1
-            if skip_docs > 0:
-                pbar_skip.update(1)
-                if streamed == skip_docs:
-                    pbar_skip.close()
-                    console.print(f"Done skipping {skip_docs:,} docs. Collecting new data...")
-            continue
-
-        streamed += 1
-        text = example["text"]
-        est_tokens = len(estimator.encode(text, add_special_tokens=False))
-
-        if est_tokens < min_tokens:
-            continue
-
-        documents.append({
-            "text": text,
-            "uid": uid_offset + len(documents),
-        })
-
-        total_tokens += est_tokens
-        pbar.update(est_tokens)
-
-        if total_tokens >= target_tokens:
+    done = False
+    while not done:
+        buf = []
+        for _ in range(batch_size):
+            try:
+                buf.append(next(it)["text"])
+            except StopIteration:
+                done = True
+                break
+        if not buf:
             break
-
-        if len(documents) % 10000 == 0:
-            pbar.set_postfix({"docs": len(documents)})
+        # Batch-encode: per-doc ids identical to estimator.encode(text).
+        encoded = estimator(buf, add_special_tokens=False)["input_ids"]
+        for text, ids in zip(buf, encoded):
+            streamed += 1
+            est_tokens = len(ids)
+            if est_tokens < min_tokens:
+                continue
+            documents.append({
+                "text": text,
+                "uid": uid_offset + len(documents),
+            })
+            total_tokens += est_tokens
+            pbar.update(est_tokens)
+            if total_tokens >= target_tokens:
+                done = True
+                break  # stop at the exact same doc as the per-doc loop
 
     pbar.close()
     return documents, total_tokens, streamed
 
 
-def download_base_data(output_dir: Path) -> tuple[Path, int]:
+def download_base_data(output_dir: Path, batch_size: int = 1000) -> tuple[Path, int]:
     """Download the base 2B tokens and create train/val/test splits.
 
     This exactly reproduces the original notebook 01 procedure:
@@ -141,6 +156,7 @@ def download_base_data(output_dir: Path) -> tuple[Path, int]:
         target_tokens=BASE_TOKENS,
         min_tokens=BASE_MIN_TOKENS,
         desc="Downloading base data",
+        batch_size=batch_size,
     )
 
     console.print(f"Collected {len(documents):,} documents ({total_tokens / 1e9:.2f}B tokens)")
@@ -174,6 +190,7 @@ def download_extra_train_data(
     extra_tokens: int,
     base_docs_streamed: int,
     chunk_size: int = 500_000,
+    batch_size: int = 1000,
 ) -> None:
     """Download additional training documents beyond the base 2B.
 
@@ -238,66 +255,81 @@ def download_extra_train_data(
     chunk_tokens = 0
     skipped = 0
 
+    import json
+
+    it = iter(dataset)
+
+    # Skip phase (per-example, identical count to the original).
     if skip_total > 0:
         pbar_skip = tqdm(total=skip_total, unit="doc", desc="Skipping existing docs")
+        while skipped < skip_total:
+            try:
+                next(it)
+            except StopIteration:
+                break
+            skipped += 1
+            pbar_skip.update(1)
+        pbar_skip.close()
+        console.print("Done skipping. Collecting new data...")
 
     pbar = tqdm(total=remaining_tokens, unit="tok", desc="Downloading extra train data")
 
     total_new_tokens = 0
     total_new_docs = 0
-    import json
 
-    for example in dataset:
-        if skipped < skip_total:
-            skipped += 1
-            if skip_total > 0:
-                pbar_skip.update(1)
-                if skipped == skip_total:
-                    pbar_skip.close()
-                    console.print(f"Done skipping. Collecting new data...")
-            continue
-
-        text = example["text"]
-        est_tokens = len(estimator.encode(text, add_special_tokens=False))
-
-        if est_tokens < BASE_MIN_TOKENS:
-            continue
-
-        chunk_docs.append({
-            "text": text,
-            "uid": base_docs_streamed + docs_so_far + total_new_docs + len(chunk_docs),
-        })
-        chunk_tokens += est_tokens
-        total_new_tokens += est_tokens
-        pbar.update(est_tokens)
-
-        # Save chunk when it reaches chunk_size
-        if len(chunk_docs) >= chunk_size:
-            chunk_path = extra_train_dir / f"chunk_{chunk_idx:04d}"
-            ds = Dataset.from_list(chunk_docs)
-            ds.save_to_disk(str(chunk_path))
-            total_new_docs += len(chunk_docs)
-
-            # Update metadata for resume
-            meta = {
-                "total_tokens": tokens_so_far + total_new_tokens,
-                "total_docs": docs_so_far + total_new_docs,
-                "total_streamed": streamed_so_far + total_new_docs,
-                "chunks_saved": chunk_idx + 1,
-            }
-            with open(extra_train_dir / "metadata.json", "w") as f:
-                json.dump(meta, f)
-
-            console.print(f"  Saved chunk {chunk_idx}: {len(chunk_docs):,} docs, total {(tokens_so_far + total_new_tokens) / 1e9:.2f}B tokens")
-            chunk_idx += 1
-            chunk_docs = []
-            chunk_tokens = 0
-
-        if total_new_tokens >= remaining_tokens:
+    # Batched estimation (parallel across cores) — bit-identical selection:
+    # per-doc token ids are unchanged by batching, docs are processed in stream
+    # order, chunk-save and break happen in the same order at the same doc.
+    done = False
+    while not done:
+        buf = []
+        for _ in range(batch_size):
+            try:
+                buf.append(next(it)["text"])
+            except StopIteration:
+                done = True
+                break
+        if not buf:
             break
+        encoded = estimator(buf, add_special_tokens=False)["input_ids"]
+        for text, ids in zip(buf, encoded):
+            est_tokens = len(ids)
+            if est_tokens < BASE_MIN_TOKENS:
+                continue
 
-        if len(chunk_docs) % 10000 == 0 and len(chunk_docs) > 0:
-            pbar.set_postfix({"docs": total_new_docs + len(chunk_docs)})
+            chunk_docs.append({
+                "text": text,
+                "uid": base_docs_streamed + docs_so_far + total_new_docs + len(chunk_docs),
+            })
+            chunk_tokens += est_tokens
+            total_new_tokens += est_tokens
+            pbar.update(est_tokens)
+
+            # Save chunk when it reaches chunk_size
+            if len(chunk_docs) >= chunk_size:
+                chunk_path = extra_train_dir / f"chunk_{chunk_idx:04d}"
+                ds = Dataset.from_list(chunk_docs)
+                ds.save_to_disk(str(chunk_path))
+                total_new_docs += len(chunk_docs)
+
+                # Update metadata for resume
+                meta = {
+                    "total_tokens": tokens_so_far + total_new_tokens,
+                    "total_docs": docs_so_far + total_new_docs,
+                    "total_streamed": streamed_so_far + total_new_docs,
+                    "chunks_saved": chunk_idx + 1,
+                }
+                with open(extra_train_dir / "metadata.json", "w") as f:
+                    json.dump(meta, f)
+
+                console.print(f"  Saved chunk {chunk_idx}: {len(chunk_docs):,} docs, total {(tokens_so_far + total_new_tokens) / 1e9:.2f}B tokens")
+                chunk_idx += 1
+                chunk_docs = []
+                chunk_tokens = 0
+
+            if total_new_tokens >= remaining_tokens:
+                done = True
+                break  # stop at the exact same doc as the per-doc loop
 
     pbar.close()
 
@@ -399,6 +431,7 @@ def main(
     target_tokens: int = typer.Option(2_000_000_000, "--target-tokens", help="Total target training tokens"),
     num_proc: int = typer.Option(8, "--num-proc", help="Number of processes for tokenization"),
     tokenize_only: bool = typer.Option(False, "--tokenize-only", help="Skip all downloading; tokenize the existing --raw-data-dir as-is"),
+    batch_size: int = typer.Option(1000, "--batch-size", help="Docs per GPT-2 estimator batch (parallel; selection is identical to per-doc)"),
 ) -> None:
     """Download FineWeb-Edu and tokenize for training.
 
@@ -421,14 +454,14 @@ def main(
         raise typer.BadParameter("--tokenize-only requires an existing --raw-data-dir")
     else:
         raw_data_dir = output_dir / "fineweb-edu-raw"
-        raw_data_dir, base_docs = download_base_data(raw_data_dir)
+        raw_data_dir, base_docs = download_base_data(raw_data_dir, batch_size=batch_size)
 
     # Step 2: Download extra training data if needed
     # Base train is ~95% of 2B = ~1.9B tokens
     base_train_tokens = int(BASE_TOKENS * BASE_TRAIN_RATIO)
     if not tokenize_only and target_tokens > base_train_tokens:
         extra_tokens = target_tokens - base_train_tokens
-        download_extra_train_data(raw_data_dir, extra_tokens, base_docs)
+        download_extra_train_data(raw_data_dir, extra_tokens, base_docs, batch_size=batch_size)
 
     # Step 3: Tokenize with each tokenizer
     for tok_path in tokenizer:

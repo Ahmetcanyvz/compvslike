@@ -74,7 +74,7 @@ training:
   z_loss_weight: 0
 
 checkpoint:
-  save_every_n_steps: 5000
+  save_every_n_steps: 2000
   save_dir: .checkpoints
   save_last: true
 

@@ -32,5 +32,5 @@ python scripts/prepare_all.py \
     -t tokenizers/unigramlm-128k \
     -o data \
     --target-tokens 20000000000 \
-    --num-proc 288
+    --num-proc 32
 echo "=== Done ==="

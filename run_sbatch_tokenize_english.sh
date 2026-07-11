@@ -26,6 +26,6 @@ python scripts/prepare_all.py \
     -t tokenizers/unigramlm-128k \
     -o data \
     --raw-data-dir data/fineweb-edu-raw \
-    --target-tokens 20000000000 \
+    --tokenize-only \
     --num-proc 288
 echo "=== Done ==="

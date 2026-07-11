@@ -398,12 +398,17 @@ def main(
     raw_data_dir: Optional[Path] = typer.Option(None, "--raw-data-dir", help="Existing raw data directory (skip download)"),
     target_tokens: int = typer.Option(2_000_000_000, "--target-tokens", help="Total target training tokens"),
     num_proc: int = typer.Option(8, "--num-proc", help="Number of processes for tokenization"),
+    tokenize_only: bool = typer.Option(False, "--tokenize-only", help="Skip all downloading; tokenize the existing --raw-data-dir as-is"),
 ) -> None:
     """Download FineWeb-Edu and tokenize for training.
 
     Val/test splits always come from the first 2B tokens (seed=42 shuffle),
     matching the original experiment setup. If --target-tokens > 2B, additional
     documents are streamed and added only to the train split.
+
+    With --tokenize-only, no downloading happens: whatever is already in
+    --raw-data-dir (train/val/test) is tokenized as-is. Use this when the raw
+    data was downloaded separately and already has the desired token count.
     """
     # Step 1: Download base 2B tokens (creates val/test)
     if raw_data_dir and raw_data_dir.exists():
@@ -412,6 +417,8 @@ def main(
         val_ds = load_from_disk(str(raw_data_dir / "val"))
         test_ds = load_from_disk(str(raw_data_dir / "test"))
         base_docs = len(train_ds) + len(val_ds) + len(test_ds)
+    elif tokenize_only:
+        raise typer.BadParameter("--tokenize-only requires an existing --raw-data-dir")
     else:
         raw_data_dir = output_dir / "fineweb-edu-raw"
         raw_data_dir, base_docs = download_base_data(raw_data_dir)
@@ -419,7 +426,7 @@ def main(
     # Step 2: Download extra training data if needed
     # Base train is ~95% of 2B = ~1.9B tokens
     base_train_tokens = int(BASE_TOKENS * BASE_TRAIN_RATIO)
-    if target_tokens > base_train_tokens:
+    if not tokenize_only and target_tokens > base_train_tokens:
         extra_tokens = target_tokens - base_train_tokens
         download_extra_train_data(raw_data_dir, extra_tokens, base_docs)
 

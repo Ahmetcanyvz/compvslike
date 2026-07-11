@@ -12,8 +12,19 @@
 #SBATCH --error=logs/train_1B_s4344_%A_%a.err
 #SBATCH --container-writable
 #SBATCH --environment=lm_trainer_env
+#SBATCH --requeue
+#SBATCH --signal=B:USR1@180
 
-set -euo pipefail
+set -uo pipefail
+
+# Auto-requeue ~180s before the walltime: SLURM sends USR1 to this batch shell,
+# we requeue the job, and on restart it auto-resumes from the last checkpoint.
+requeue_handler() {
+    echo "=== [$(date)] USR1 near walltime — requeuing ${SLURM_JOB_ID} ==="
+    scontrol requeue "${SLURM_JOB_ID}" || true
+    kill "${TRAIN_PID:-}" 2>/dev/null || true
+}
+trap requeue_handler USR1
 
 WORK_DIR="/iopsstor/scratch/cscs/ayavuz/compvslike"
 TOKENIZER_BASE="${WORK_DIR}/tokenizers"
@@ -109,7 +120,12 @@ if [[ -d "$CKPT_DIR" ]]; then
     fi
 fi
 
+# Run in background + wait so the USR1 trap can fire mid-training.
 torchrun --nproc_per_node=4 --master_addr=localhost --master_port=$((29500 + SLURM_ARRAY_TASK_ID)) \
-    -m src.train train "$CONFIG_FILE" --seed "$SEED" $RESUME_FLAG
+    -m src.train train "$CONFIG_FILE" --seed "$SEED" $RESUME_FLAG &
+TRAIN_PID=$!
+wait "$TRAIN_PID"
+TRAIN_RC=$?
 
-echo "=== Done: me1B-tied / ${TOK_NAME} / seed${SEED} ==="
+echo "=== Exit ${TRAIN_RC}: me1B-tied / ${TOK_NAME} / seed${SEED} ==="
+exit $TRAIN_RC

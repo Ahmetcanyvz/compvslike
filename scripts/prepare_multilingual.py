@@ -145,8 +145,14 @@ def main(
     total_tokens: int = typer.Option(2_000_000_000, "--total-tokens"),
     num_proc: int = typer.Option(8, "--num-proc"),
     eng_raw_dir: Optional[Path] = typer.Option(None, "--eng-raw-dir", help="Existing English raw data dir (reuse val/test)"),
+    merge_only: bool = typer.Option(False, "--merge-only", help="Do download-check + merge, then stop (no tokenization)"),
+    tokenize_only: bool = typer.Option(False, "--tokenize-only", help="Skip merge creation; tokenize the given tokenizer(s). Merge must already exist."),
 ) -> None:
-    """Download multilingual data and tokenize."""
+    """Download multilingual data and tokenize.
+
+    For parallel tokenization: run once with --merge-only, then run a job per
+    tokenizer with --tokenize-only (all reading the shared merged data).
+    """
 
     raw_dir = raw_data_dir if raw_data_dir and raw_data_dir.exists() else output_dir / "raw"
     merge_dir = output_dir / "merged"
@@ -205,6 +211,15 @@ def main(
             merged_split_dir.parent.mkdir(parents=True, exist_ok=True)
             merged.save_to_disk(str(merged_split_dir))
             console.print(f"  Merged {split}: {len(merged):,} documents")
+
+    if merge_only:
+        console.print("\n[green bold]Merge complete (--merge-only); skipping tokenization.[/green bold]")
+        return
+
+    if tokenize_only and not (merge_dir / "train").exists():
+        raise typer.BadParameter(
+            "--tokenize-only requires the merged data to exist; run with --merge-only first."
+        )
 
     # Step 3: Tokenize with each tokenizer
     console.print("\n[bold]Step 3: Tokenizing[/bold]")

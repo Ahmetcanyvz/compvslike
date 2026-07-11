@@ -8,8 +8,8 @@
 #SBATCH --cpus-per-task=288
 #SBATCH --gpus-per-node=4
 #SBATCH --array=0-7
-#SBATCH --output=logs/train_1B_s4344_%A_%a.out
-#SBATCH --error=logs/train_1B_s4344_%A_%a.err
+#SBATCH --output=logs_training/train_1B_s4344_%A_%a.out
+#SBATCH --error=logs_training/train_1B_s4344_%A_%a.err
 #SBATCH --container-writable
 #SBATCH --environment=lm_trainer_env
 #SBATCH --requeue
@@ -32,7 +32,7 @@ DATA_BASE="${WORK_DIR}/data"
 
 cd "$WORK_DIR"
 pip install -e . --no-deps
-mkdir -p logs
+mkdir -p logs_training
 
 # 8 jobs = seeds {43,44} x 4 tokenizers. One node (4 GPUs, DDP) per job.
 SEEDS=(43 44)

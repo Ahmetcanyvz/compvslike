@@ -123,7 +123,8 @@ def main() -> None:
         .get("total", {})
         .get("completed", 0)
     )
-    log(f"global_step={ckpt.get('global_step')}  batch_completed={batch_completed}")
+    resume_global_step = int(ckpt.get("global_step", 0))
+    log(f"global_step={resume_global_step}  batch_completed={batch_completed}")
     dm._skip_batches = batch_completed
     del ckpt
     done("load ckpt", t)
@@ -167,12 +168,13 @@ def main() -> None:
     )
     done("build LanguageModel", t)
 
-    # ---- REAL REPRODUCTION: trainer.fit with ckpt_path, capped to a few steps past resume ----
-    # Override max_steps so if it DOES resume it stops quickly instead of training for hours.
-    resume_step = training_config["max_steps"]
-    cap = min(max_steps, (batch_completed // training_config.get("gradient_accumulation", 1)) + 3)
+    # ---- REAL REPRODUCTION: trainer.fit with ckpt_path, capped to a few steps PAST resume ----
+    # Remove max_tokens so compute_max_steps uses our explicit max_steps (otherwise it
+    # recomputes from tokens and can land BELOW the resume step -> fit exits instantly).
+    cap = resume_global_step + 5
+    config["training"].pop("max_tokens", None)
     config["training"]["max_steps"] = cap
-    log(f"capping max_steps to {cap} for the fit reproduction")
+    log(f"set max_steps={cap} (resume_step {resume_global_step} + 5) for the fit reproduction")
 
     t = phase("setup_trainer")
     output_dir = Path("outputs/_debug_resume")

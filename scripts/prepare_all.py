@@ -353,8 +353,14 @@ def tokenize_split(
     raw_dataset: Dataset,
     tokenizer: AutoTokenizer,
     num_proc: int,
+    map_batch_size: int = 4000,
+    writer_batch_size: int = 4000,
 ) -> Dataset:
-    """Tokenize a single split."""
+    """Tokenize a single split.
+
+    Order-preserving and deterministic per document: map_batch_size / num_proc
+    only affect throughput, never the resulting input_ids.
+    """
     def tokenize_fn(examples):
         tokens = tokenizer(
             examples["text"],
@@ -370,6 +376,8 @@ def tokenize_split(
     return raw_dataset.map(
         tokenize_fn,
         batched=True,
+        batch_size=map_batch_size,
+        writer_batch_size=writer_batch_size,
         num_proc=num_proc,
         remove_columns=["text"],
         desc="Tokenizing",

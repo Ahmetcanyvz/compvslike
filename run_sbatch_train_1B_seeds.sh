@@ -102,7 +102,7 @@ PORT=$((29500 + SLURM_ARRAY_TASK_ID))
 
 # Run the training workload in the container; keep the batch shell on the host
 # (background + wait) so the USR1 trap can fire and requeue mid-training.
-srun --environment=lm_trainer_env --nodes=1 --ntasks=1 \
+srun --environment=lm_trainer_env --container-writable --nodes=1 --ntasks=1 \
     bash "${WORK_DIR}/train_1B_inner.sh" "$SEED" "$TOK_NAME" "$CONFIG_FILE" "$PORT" $RESUME_FLAG &
 SRUN_PID=$!
 wait "$SRUN_PID"

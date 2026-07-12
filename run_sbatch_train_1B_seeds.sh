@@ -10,29 +10,26 @@
 #SBATCH --array=0-7
 #SBATCH --output=logs_training/train_1B_s4344_%A_%a.out
 #SBATCH --error=logs_training/train_1B_s4344_%A_%a.err
-#SBATCH --container-writable
-#SBATCH --environment=lm_trainer_env
 #SBATCH --requeue
 #SBATCH --signal=B:USR1@180
+# NOTE: no --environment here on purpose. The batch script (and the requeue
+# trap) run on the HOST, where scontrol works. The container's glibc is too old
+# for the host SLURM libs, so scontrol must NOT run inside the container.
 
 set -uo pipefail
-
-# Auto-requeue ~180s before the walltime: SLURM sends USR1 to this batch shell,
-# we requeue the job, and on restart it auto-resumes from the last checkpoint.
-requeue_handler() {
-    echo "=== [$(date)] USR1 near walltime — requeuing ${SLURM_JOB_ID} ==="
-    scontrol requeue "${SLURM_JOB_ID}" || true
-    kill "${TRAIN_PID:-}" 2>/dev/null || true
-}
-trap requeue_handler USR1
 
 WORK_DIR="/iopsstor/scratch/cscs/ayavuz/compvslike"
 TOKENIZER_BASE="${WORK_DIR}/tokenizers"
 DATA_BASE="${WORK_DIR}/data"
+mkdir -p "${WORK_DIR}/logs_training"
 
-cd "$WORK_DIR"
-pip install -e . --no-deps
-mkdir -p logs_training
+# Auto-requeue ~180s before walltime. Runs on the host -> scontrol works.
+requeue_handler() {
+    echo "=== [$(date)] USR1 near walltime — requeuing ${SLURM_JOB_ID} ==="
+    scontrol requeue "${SLURM_JOB_ID}" || true
+    kill "${SRUN_PID:-}" 2>/dev/null || true
+}
+trap requeue_handler USR1
 
 # 8 jobs = seeds {43,44} x 4 tokenizers. One node (4 GPUs, DDP) per job.
 SEEDS=(43 44)
@@ -40,8 +37,8 @@ TOKS=(bpe_count-128k compmax-128k greedyll-exact-128k unigramlm-128k)
 SEED=${SEEDS[$((SLURM_ARRAY_TASK_ID / 4))]}
 TOK_NAME=${TOKS[$((SLURM_ARRAY_TASK_ID % 4))]}
 
-CONFIG_FILE="configs/clariden_1B_${TOK_NAME}_seed${SEED}.yaml"
-
+CONFIG_FILE="${WORK_DIR}/configs/clariden_1B_${TOK_NAME}_seed${SEED}.yaml"
+mkdir -p "${WORK_DIR}/configs"
 cat > "$CONFIG_FILE" <<EOF
 paths:
   tokenizer: ${TOKENIZER_BASE}/${TOK_NAME}
@@ -90,26 +87,7 @@ logging:
   val_check_interval: 20000
 EOF
 
-# Pre-create dataset metadata single-process (shuffle_seed = training seed),
-# so the 4 DDP ranks load it instead of racing to create it.
-echo "=== [seed ${SEED} / ${TOK_NAME}] Pre-creating dataset metadata ==="
-python -c "
-from src.data import PackedTokenDataset
-for split, sd in [('train', ${SEED}), ('val', None)]:
-    path = '${DATA_BASE}/fineweb-edu-${TOK_NAME}/' + split
-    ds = PackedTokenDataset(path, seq_len=2048, eos_token_id=0, shuffle_seed=sd)
-    print(f'  {split}: {len(ds)} sequences')
-"
-
-echo "=== Training: me1B-tied / ${TOK_NAME} / seed${SEED} ==="
-
-export NCCL_DEBUG=WARN
-export NCCL_NET=Socket
-export NCCL_TIMEOUT=3600
-export MASTER_ADDR=localhost
-export MASTER_PORT=$((29500 + SLURM_ARRAY_TASK_ID))
-
-# Auto-resume from last checkpoint if it exists (resubmit to continue past 12h).
+# Compute resume flag on the host (shared filesystem).
 CKPT_DIR="${WORK_DIR}/outputs/me1B-tied_${TOK_NAME}_20Btok_seed${SEED}/.checkpoints"
 RESUME_FLAG=""
 if [[ -d "$CKPT_DIR" ]]; then
@@ -120,11 +98,14 @@ if [[ -d "$CKPT_DIR" ]]; then
     fi
 fi
 
-# Run in background + wait so the USR1 trap can fire mid-training.
-torchrun --nproc_per_node=4 --master_addr=localhost --master_port=$((29500 + SLURM_ARRAY_TASK_ID)) \
-    -m src.train train "$CONFIG_FILE" --seed "$SEED" $RESUME_FLAG &
-TRAIN_PID=$!
-wait "$TRAIN_PID"
+PORT=$((29500 + SLURM_ARRAY_TASK_ID))
+
+# Run the training workload in the container; keep the batch shell on the host
+# (background + wait) so the USR1 trap can fire and requeue mid-training.
+srun --environment=lm_trainer_env --nodes=1 --ntasks=1 \
+    bash "${WORK_DIR}/train_1B_inner.sh" "$SEED" "$TOK_NAME" "$CONFIG_FILE" "$PORT" $RESUME_FLAG &
+SRUN_PID=$!
+wait "$SRUN_PID"
 TRAIN_RC=$?
 
 echo "=== Exit ${TRAIN_RC}: me1B-tied / ${TOK_NAME} / seed${SEED} ==="

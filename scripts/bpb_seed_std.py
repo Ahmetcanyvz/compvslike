@@ -3,8 +3,8 @@
 For each bpb.parquet it computes the byte-weighted corpus BPB:
     BPB = sum(loss_nats) / (sum(num_bytes) * ln2)
 then groups by tokenizer and reports mean, std, and the per-seed values across
-seeds (e.g. 42/43/44). This is the seed-to-seed variance the paper needs to
-back multi-seed claims.
+seeds (e.g. 42/43/44). Reports the standard deviation (std, ddof=1) across
+seeds -- the same "mean +/- std" convention the paper uses (never variance).
 
 Usage:
     python scripts/bpb_seed_std.py eval_results_1B

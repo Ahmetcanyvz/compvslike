@@ -186,7 +186,8 @@ per-document BPB. Then:
 
 ```bash
 python analysis/gather_results.py                        # merge BPB + BLiMP per model
-python analysis/bootstrap_bpb_compare.py A.parquet B.parquet   # paired bootstrap, 95% CI
+python analysis/bootstrap_bpb.py eval_results --glob "*/bpb.parquet"   # per-model 95% CI
+python analysis/bootstrap_bpb_compare.py A.parquet B.parquet          # paired difference, 95% CI
 python analysis/bpb_seed_std.py                          # mean +/- std across seeds
 ```
 

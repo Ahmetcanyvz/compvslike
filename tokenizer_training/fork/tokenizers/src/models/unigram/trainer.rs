@@ -100,7 +100,7 @@ impl UnigramTrainer {
             None
         }
     }
-    // WHY ?
+
     fn is_valid_sentencepiece(&self, char_string: &[char]) -> bool {
         // Checks string length
         // Space not in the substring, numbers, hiragana and more should be taken

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Train CompMax + UnigramLM tokenizers on a multilingual mix.
+Train TopDownComp + UnigramLM tokenizers on a multilingual mix.
 
 Corpus: 1B English (FineWeb-Edu) + 250M each from cmn, deu, spa, tur = ~2B total
-Token counts estimated via GPT-2 tokenizer (same as the GreedyLL pipeline).
+Token counts estimated via GPT-2 tokenizer (same as the BottomUpLL pipeline).
 
 Memory-efficient pattern:
   - The mixed corpus is built once and saved to a cache directory as an
@@ -242,7 +242,7 @@ def save_tokenizer(tokenizer, name, output_dir):
 # ===================
 
 def main():
-    parser = argparse.ArgumentParser(description="Train multilingual CompMax/UnigramLM tokenizers")
+    parser = argparse.ArgumentParser(description="Train multilingual TopDownComp/UnigramLM tokenizers")
     parser.add_argument("--english-dir", type=Path, default=DEFAULT_ENGLISH_DIR)
     parser.add_argument("--multi-dir", type=Path, default=DEFAULT_MULTI_DIR)
     parser.add_argument("--tokenizer-dir", type=Path, default=DEFAULT_TOKENIZER_DIR)

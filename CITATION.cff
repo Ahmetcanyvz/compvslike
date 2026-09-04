@@ -1,16 +1,33 @@
 cff-version: 1.2.0
 message: "If you use this software or its results, please cite the paper below."
-title: "comp-vs-like: disentangling tokeniser objective from search procedure"
+title: "comp-vs-like: decomposing tokeniser objective from search procedure"
 authors:
   - family-names: Yavuz
     given-names: Ahmetcan
+    affiliation: "ETH Zürich"
+    email: ayavuz@ethz.ch
+  - family-names: Meister
+    given-names: Clara
+    affiliation: "EPFL"
+    email: clara.meister@epfl.ch
+  - family-names: Pimentel
+    given-names: Tiago
+    affiliation: "ETH Zürich"
+    email: tiago.pimentel@inf.ethz.ch
 repository-code: "https://github.com/Ahmetcanyvz/comp-vs-like"
 license: MIT
 preferred-citation:
   type: conference-paper
-  title: "What Matters in Tokenisation: The Objective or the Search Procedure?"
+  title: "Objective vs. Search: Decomposing What Makes a Good Tokeniser"
   authors:
     - family-names: Yavuz
       given-names: Ahmetcan
+      affiliation: "ETH Zürich"
+    - family-names: Meister
+      given-names: Clara
+      affiliation: "EPFL"
+    - family-names: Pimentel
+      given-names: Tiago
+      affiliation: "ETH Zürich"
   year: 2026
-  notes: "Update this block with the final author list, venue and DOI on acceptance."
+  notes: "Add the venue and DOI once finalised."

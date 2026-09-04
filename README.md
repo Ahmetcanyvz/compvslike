@@ -1,6 +1,8 @@
 # comp-vs-like
 
-Code and reproduction pipeline for **"What matters in tokenisation: the objective or the search procedure?"**
+Code and reproduction pipeline for **"Objective vs. Search: Decomposing What Makes a Good Tokeniser"**
+
+Ahmetcan Yavuz (ETH Zürich), Clara Meister (EPFL), Tiago Pimentel (ETH Zürich)
 
 The two dominant tokenisation algorithms, BPE and UnigramLM, differ along two orthogonal axes at once:
 

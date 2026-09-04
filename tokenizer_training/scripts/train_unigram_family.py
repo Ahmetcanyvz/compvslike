@@ -3,7 +3,7 @@
 Train CompressionTrainer Tokenizers & Tokenize Data
 
 Trains Unigram tokenizers using CompressionTrainer (default variant)
-with the same settings as train_greedyll_tokenizers.py for fair comparison.
+with the same settings as train_bottomupll_tokenizers.py for fair comparison.
 
 Usage:
     python train_compression_tokenizers.py
@@ -201,8 +201,8 @@ def main():
                         help="Vocab sizes to train (e.g., 8000 32000 128000)")
     parser.add_argument("--num-proc", type=int, default=DEFAULT_NUM_PROC,
                         help="Number of processes for tokenization")
-    parser.add_argument("--methods", type=str, nargs="+", default=["compmax", "unigramlm"],
-                        choices=["compmax", "unigramlm"],
+    parser.add_argument("--methods", type=str, nargs="+", default=["topdowncomp", "unigramlm"],
+                        choices=["topdowncomp", "unigramlm"],
                         help="Methods to train (default: both)")
     parser.add_argument("--skip-tokenization", action="store_true",
                         help="Skip dataset tokenization (only train tokenizers)")
@@ -237,7 +237,7 @@ def main():
     args.tokenizer_dir.mkdir(parents=True, exist_ok=True)
 
     all_methods = {
-        "compmax": train_compression_tokenizer,
+        "topdowncomp": train_compression_tokenizer,
         "unigramlm": train_unigram_tokenizer,
     }
     methods = {k: all_methods[k] for k in args.methods}
@@ -348,7 +348,7 @@ def main():
             results = {}
 
             # Load all our tokenizers + BPE variants if they exist
-            for method in ["compmax", "unigramlm", "bpe_count", "greedyll-exact", "greedyll-approx"]:
+            for method in ["topdowncomp", "unigramlm", "bpe", "bottomupll-exact", "bottomupll-approx"]:
                 try:
                     tok = PreTrainedTokenizerFast.from_pretrained(args.tokenizer_dir / f"{method}-{vocab_size // 1000}k")
                     total_tokens = sum(len(tok.encode(t, add_special_tokens=False)) for t in tqdm(sample_texts, desc=f"  {method}", leave=False))
@@ -360,7 +360,7 @@ def main():
 
             if results:
                 best = min(results, key=results.get)
-                baseline = results.get("bpe_count", list(results.values())[0])
+                baseline = results.get("bpe", list(results.values())[0])
 
                 for name, tokens in sorted(results.items(), key=lambda x: x[1]):
                     diff_pct = (tokens - baseline) / baseline * 100 if baseline else 0

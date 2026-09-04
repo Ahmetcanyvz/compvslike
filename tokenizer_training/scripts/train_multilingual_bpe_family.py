@@ -6,16 +6,16 @@ Corpus: 1B English (FineWeb-Edu) + 250M each from cmn, deu, spa, tur = ~2B total
 Token counts estimated via GPT-2 tokenizer (same as the original FineWeb pipeline).
 
 Methods:
-  - bpe_count       (standard BPE, most frequent pair)
-  - greedyll-exact  (rank by exact ΔLL)
-  - greedyll-approx (rank by approx ΔLL / PMI-like)
+  - bpe       (standard BPE, most frequent pair)
+  - bottomupll-exact  (rank by exact ΔLL)
+  - bottomupll-approx (rank by approx ΔLL / PMI-like)
 
 Memory-efficient pattern:
   - The mixed corpus is built once and saved to a cache directory as an
     Arrow dataset (memory-mapped, not held in Python memory).
   - Each training run loads via load_from_disk() and iterates batches
     directly from the mmap'd file — matches the original
-    train_greedyll_tokenizers.py pattern.
+    train_bottomupll_tokenizers.py pattern.
   - The cache is reused on subsequent runs (delete it manually if you want
     to rebuild with different token budgets).
 
@@ -51,9 +51,9 @@ DEFAULT_PER_LANG_TOKENS = 250_000_000    # 250M per language (4 × 250M = 1B tot
 DEFAULT_VOCAB_SIZE = 128_000
 
 SCORING_METHODS = {
-    "bpe_count":       {"score_by": "count",             "stop_by": "vocab_size"},
-    "greedyll-exact":  {"score_by": "greedy_ll_exact",   "stop_by": "vocab_size"},
-    "greedyll-approx": {"score_by": "greedy_ll_approx",  "stop_by": "vocab_size"},
+    "bpe":       {"score_by": "count",             "stop_by": "vocab_size"},
+    "bottomupll-exact":  {"score_by": "greedy_ll_exact",   "stop_by": "vocab_size"},
+    "bottomupll-approx": {"score_by": "greedy_ll_approx",  "stop_by": "vocab_size"},
 }
 
 SPECIAL_TOKENS = [

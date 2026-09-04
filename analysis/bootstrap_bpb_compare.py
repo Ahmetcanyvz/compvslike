@@ -17,7 +17,7 @@ in both files are compared.
 Usage:
     # Two explicit models -> single Delta CI
     python scripts/bootstrap_bpb_compare.py \
-        eval_results/me500M-tied_greedyll-exact-128k_10Btok_seed42/bpb.parquet \
+        eval_results/me500M-tied_bottomupll-exact-128k_10Btok_seed42/bpb.parquet \
         eval_results/me500M-tied_bpe-128k_10Btok_seed42/bpb.parquet
 
     # A set of models -> every model vs a baseline (matched by substring)

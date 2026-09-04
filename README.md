@@ -15,14 +15,14 @@ Existing comparisons confound the two axes. This repository fills the empty cell
 tokenisers so the axes can be varied independently, and contains everything needed to reproduce
 the paper end to end: data preparation, tokeniser training, language-model training, and evaluation.
 
-In the code the two new tokenisers keep their development names: **`greedyll` = BottomUpLL** and
-**`compmax` = TopDownComp**.
+The trained tokenisers ship in `tokenizers/` (26 directories, ~130 MB), named after the paper.
 
 ## Repository layout
 
 ```
 comp-vs-like/
 ├── env.sh                      # all machine-specific paths live here
+├── tokenizers/                 #    the 26 trained tokenisers (ready to use)
 ├── data_prep/                  # 1. download + tokenise the corpora
 ├── tokenizer_training/
 │   ├── fork/                   #    modified HuggingFace tokenizers (Rust) — the algorithms
@@ -40,12 +40,21 @@ comp-vs-like/
 
 Both new tokenisers are implemented in the vendored Rust fork, not in Python:
 
-| Paper name    | Code name  | Implementation                                                      |
-|---------------|------------|---------------------------------------------------------------------|
-| BPE           | `bpe`      | `fork/tokenizers/src/models/bpe/trainer.rs`, `score_by="count"`       |
-| BottomUpLL    | `greedyll` | same file, `score_by="greedy_ll_exact"` / `"greedy_ll_approx"`        |
-| TopDownComp   | `compmax`  | `fork/tokenizers/src/models/unigram/compression_trainer.rs`           |
-| UnigramLM     | `unigramlm`| upstream `fork/tokenizers/src/models/unigram/trainer.rs` (unmodified) |
+| Tokeniser   | Directory             | Implementation                                                       |
+|-------------|-----------------------|----------------------------------------------------------------------|
+| BPE         | `bpe-*`               | `fork/tokenizers/src/models/bpe/trainer.rs`, `score_by="count"`       |
+| BottomUpLL  | `bottomupll-exact-*`  | same file, `score_by="greedy_ll_exact"`                               |
+| BottomUpLL  | `bottomupll-approx-*` | same file, `score_by="greedy_ll_approx"`                              |
+| TopDownComp | `topdowncomp-*`       | `fork/tokenizers/src/models/unigram/compression_trainer.rs`           |
+| UnigramLM   | `unigramlm-*`         | upstream `fork/tokenizers/src/models/unigram/trainer.rs` (unmodified) |
+
+Each exists at `8k`, `32k` and `128k`, plus a `-multi-128k` variant trained on the multilingual
+corpus. The appendix ablations ship too: `topdowncomp_exact-128k`,
+`topdowncomp_gradual_{01,001}-128k`, `unigramlm_gradual_999-128k`, and the SentencePiece-seeded
+`*_sentencepiece-128k` pair.
+
+The `score_by` values keep their original spellings (`greedy_ll_exact`, `greedy_ll_approx`): those
+are the Rust API, not display names.
 
 All four therefore share one code path for corpus reading, normalisation and pre-tokenisation;
 only the scoring and search differ. See `NOTICE` for the full list of modifications.
@@ -99,8 +108,8 @@ Then tokenise the corpus once per tokeniser:
 ```bash
 python data_prep/prepare_all.py --tokenize-only \
     --raw-data-dir "$CVL_RAW_EN" -o "$CVL_DATA" \
-    -t "$CVL_TOKENIZERS/bpe-128k" -t "$CVL_TOKENIZERS/compmax-128k" \
-    -t "$CVL_TOKENIZERS/greedyll-exact-128k" -t "$CVL_TOKENIZERS/unigramlm-128k"
+    -t "$CVL_TOKENIZERS/bpe-128k" -t "$CVL_TOKENIZERS/topdowncomp-128k" \
+    -t "$CVL_TOKENIZERS/bottomupll-exact-128k" -t "$CVL_TOKENIZERS/unigramlm-128k"
 ```
 
 ### 2. Tokenisers
@@ -110,7 +119,7 @@ python tokenizer_training/scripts/train_bpe_family.py     --vocab-sizes 8000 320
 python tokenizer_training/scripts/train_unigram_family.py --vocab-sizes 8000 32000 128000
 ```
 
-The first trains `bpe_count`, `greedyll-exact` and `greedyll-approx`; the second trains `compmax`
+The first trains `bpe`, `bottomupll-exact` and `bottomupll-approx`; the second trains `topdowncomp`
 and `unigramlm`. Multilingual equivalents are `train_multilingual_*.py`. Appendix ablations
 (batch-pruning rates, exact scoring, SentencePiece-seeded vocabularies) are in `scripts/ablations/`.
 
@@ -165,7 +174,7 @@ per parameter.
 ./evaluation/run_bpb.sh                                  # bits per byte, English test
 TEST_DATA="$CVL_RAW_MULTI/deu/test" ./evaluation/run_bpb.sh
 ./evaluation/run_blimp.sh                                # BLiMP (English), all models
-./evaluation/run_multiblimp.sh bpe_count-multi-128k      # MultiBLiMP + ZhoBLiMP, one model
+./evaluation/run_multiblimp.sh bpe-multi-128k      # MultiBLiMP + ZhoBLiMP, one model
 ```
 
 `run_multiblimp.sh` loops the four MultiBLiMP languages (`eng deu spa tur`) and then runs ZhoBLiMP
@@ -193,9 +202,14 @@ the interval is over the paired difference rather than the two marginals.
 - **`REBUILD_INTERVAL` is a performance knob only.** The trainer's pop path re-validates every
   entry against current counts and re-pushes stale ones, so heap-rebuild frequency cannot change
   which merge is selected.
-- **`bpe-*` and `bpe_count-*` are the same tokenisers.** Their vocabularies are byte-identical at
-  8k, 32k and 128k; the two names are a historical duplicate. The paper's BPE baseline is
-  `score_by="count"`.
+- **Directories were renamed to the paper's names after the experiments ran.** The code and the
+  trained checkpoint directories originally used development names. Map old to new with:
+  `greedyll-exact` -> `bottomupll-exact`, `greedyll-approx` -> `bottomupll-approx`,
+  `compmax` -> `topdowncomp`, `bpe_count` -> `bpe`. The eval launchers derive the tokeniser name
+  from the checkpoint directory name, so checkpoint dirs must use the new names (for example
+  `me1B-tied_topdowncomp-128k_20Btok_seed42`) for the lookup to resolve.
+- **`bpe_count-*` and `bpe-*` were byte-identical** at 8k, 32k and 128k, so only one copy ships,
+  as `bpe-*`. The paper's BPE baseline is `score_by="count"`.
 - **The paper's runs used SDPA, not FlashAttention.** Every generated config sets
   `use_flash_attention: true`, but that flag only *requests* flash: `get_attention_implementation()`
   returns `"flash_attention_2"` only if `flash_attn` is importable and silently falls back to

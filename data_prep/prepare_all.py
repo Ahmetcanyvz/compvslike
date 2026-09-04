@@ -26,7 +26,7 @@ Usage:
     uv run python scripts/prepare_all.py \
         -t /path/to/tokenizers/bpe-8k \
         -t /path/to/tokenizers/bpe-32k \
-        -t /path/to/tokenizers/compmax-8k \
+        -t /path/to/tokenizers/topdowncomp-8k \
         -o data
 """
 

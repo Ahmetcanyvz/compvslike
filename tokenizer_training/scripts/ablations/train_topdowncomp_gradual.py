@@ -3,9 +3,9 @@
 Train CompMax tokenizers with a small prune_ratio for gradual pruning.
 Same settings as train_compression_tokenizers.py — only prune_ratio differs.
 
-Names tokenizers as compmax_gradual_{pr}-{N}k where pr encodes prune_ratio,
-e.g. prune_ratio=0.01 -> compmax_gradual_01-8k
-     prune_ratio=0.001 -> compmax_gradual_001-8k
+Names tokenizers as topdowncomp_gradual_{pr}-{N}k where pr encodes prune_ratio,
+e.g. prune_ratio=0.01 -> topdowncomp_gradual_01-8k
+     prune_ratio=0.001 -> topdowncomp_gradual_001-8k
 """
 
 import os
@@ -92,7 +92,7 @@ def get_training_corpus(train_raw, batch_size=1000):
         yield train_raw[i:i + batch_size]["text"]
 
 
-def train_compmax_gradual(vocab_size: int, corpus_iterator, prune_ratio: float) -> Tokenizer:
+def train_topdowncomp_gradual(vocab_size: int, corpus_iterator, prune_ratio: float) -> Tokenizer:
     tokenizer = Tokenizer(Unigram())
     tokenizer.normalizer = NFC()
     tokenizer.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=False)
@@ -162,12 +162,12 @@ def main():
     args.tokenizer_dir.mkdir(parents=True, exist_ok=True)
 
     for vocab_size in args.vocab_sizes:
-        name = f"compmax_gradual_{pr_tag}-{vocab_size // 1000}k"
+        name = f"topdowncomp_gradual_{pr_tag}-{vocab_size // 1000}k"
         print(f"\n{'='*50}")
         print(f"Training {name}")
         print(f"{'='*50}")
 
-        tokenizer = train_compmax_gradual(
+        tokenizer = train_topdowncomp_gradual(
             vocab_size,
             get_training_corpus(train_raw),
             prune_ratio=pr,

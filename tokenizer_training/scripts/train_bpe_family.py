@@ -3,15 +3,15 @@
 Train BPE Tokenizers (All Variants) & Tokenize Data
 
 Trains BPE tokenizers using all three scoring variants:
-- count (bpe_count) - Standard BPE (most frequent pair)
+- count (bpe) - Standard BPE (most frequent pair)
 - greedy_ll_exact - Rank by exact ΔLL
 - greedy_ll_approx - Rank by approx ΔLL (PMI-like)
 
 Usage:
-    python train_greedyll_tokenizers.py
-    python train_greedyll_tokenizers.py --vocab-sizes 8000 32000
-    python train_greedyll_tokenizers.py --methods bpe_count greedyll-exact
-    python train_greedyll_tokenizers.py --skip-tokenization
+    python train_bottomupll_tokenizers.py
+    python train_bottomupll_tokenizers.py --vocab-sizes 8000 32000
+    python train_bottomupll_tokenizers.py --methods bpe bottomupll-exact
+    python train_bottomupll_tokenizers.py --skip-tokenization
 """
 
 import os
@@ -38,9 +38,9 @@ DEFAULT_DATA_DIR = Path(os.environ.get("CVL_DATA", "data"))
 DEFAULT_VOCAB_SIZES = [8_000, 32_000, 128_000]
 
 SCORING_METHODS = {
-    "bpe_count": {"score_by": "count", "stop_by": "vocab_size"},
-    "greedyll-exact": {"score_by": "greedy_ll_exact", "stop_by": "vocab_size"},
-    "greedyll-approx": {"score_by": "greedy_ll_approx", "stop_by": "vocab_size"},
+    "bpe": {"score_by": "count", "stop_by": "vocab_size"},
+    "bottomupll-exact": {"score_by": "greedy_ll_exact", "stop_by": "vocab_size"},
+    "bottomupll-approx": {"score_by": "greedy_ll_approx", "stop_by": "vocab_size"},
 }
 
 SPECIAL_TOKENS = [
@@ -323,7 +323,7 @@ def main():
             # Find best (lowest token count)
             if results:
                 best = min(results, key=results.get)
-                baseline = results.get("bpe_count", list(results.values())[0])
+                baseline = results.get("bpe", list(results.values())[0])
 
                 for name, tokens in results.items():
                     diff_pct = (tokens - baseline) / baseline * 100 if baseline else 0

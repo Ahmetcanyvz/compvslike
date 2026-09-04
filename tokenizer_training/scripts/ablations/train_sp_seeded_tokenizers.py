@@ -11,7 +11,7 @@ Pipeline:
 Same settings as train_compression_tokenizers.py except for the seed source.
 
 Output: <tokenizer-dir>/<method>_sentencepiece-{N}k/
-   where method is compmax or unigramlm
+   where method is topdowncomp or unigramlm
 """
 
 import argparse
@@ -161,7 +161,7 @@ def extract_sp_seed(pretok_path: Path, seed_size: int,
 # TRAINING (SP-seeded)
 # ===================
 
-def train_compmax_sp(vocab_size: int, corpus_iterator, seed_vocab: list[str]) -> Tokenizer:
+def train_topdowncomp_sp(vocab_size: int, corpus_iterator, seed_vocab: list[str]) -> Tokenizer:
     """CompressionTrainer initialized with SP seed vocab."""
     tokenizer = Tokenizer(Unigram())
     tokenizer.normalizer = NFC()
@@ -212,7 +212,7 @@ def train_unigramlm_sp(vocab_size: int, corpus_iterator, seed_vocab: list[str]) 
 
 
 TRAIN_FNS = {
-    "compmax": train_compmax_sp,
+    "topdowncomp": train_topdowncomp_sp,
     "unigramlm": train_unigramlm_sp,
 }
 
@@ -247,7 +247,7 @@ def save_tokenizer(tokenizer: Tokenizer, vocab_size: int, output_dir: Path, name
 # ===================
 
 def main():
-    parser = argparse.ArgumentParser(description="Train SP-seeded compmax/unigramlm tokenizers")
+    parser = argparse.ArgumentParser(description="Train SP-seeded topdowncomp/unigramlm tokenizers")
     parser.add_argument("--raw-data-dir", type=Path, default=DEFAULT_RAW_DATA_DIR)
     parser.add_argument("--tokenizer-dir", type=Path, default=DEFAULT_TOKENIZER_DIR)
     parser.add_argument("--seed-cache-dir", type=Path, default=DEFAULT_SEED_CACHE_DIR)

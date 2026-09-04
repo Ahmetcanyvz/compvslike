@@ -14,7 +14,7 @@ Memory-efficient pattern:
     --rebuild-corpus to rebuild with different token budgets).
 
 Methods:
-  - compmax     (greedy compression-based Unigram)
+  - topdowncomp     (greedy compression-based Unigram)
   - unigramlm   (EM-based Unigram)
 
 Output: <tokenizer-dir>/<method>-<suffix>-128k/
@@ -151,7 +151,7 @@ def corpus_iterator_from_disk(cache_dir, batch_size=1000):
 # TRAINING
 # ===================
 
-def train_compmax(vocab_size, cache_dir):
+def train_topdowncomp(vocab_size, cache_dir):
     """Train a byte-level Unigram tokenizer with CompressionTrainer."""
     tokenizer = Tokenizer(Unigram())
     tokenizer.normalizer = NFC()
@@ -207,7 +207,7 @@ def train_unigramlm(vocab_size, cache_dir):
 
 
 TRAIN_FNS = {
-    "compmax": train_compmax,
+    "topdowncomp": train_topdowncomp,
     "unigramlm": train_unigramlm,
 }
 

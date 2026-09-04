@@ -23,7 +23,7 @@ source "$(dirname "$0")/../env.sh"
 MODELS="${MODELS:-me340M-tied}"
 VOCABS="${VOCABS:-128k 32k 8k}"
 SEEDS="${SEEDS:-42 43 44}"
-TOK_TYPES="${TOK_TYPES:-bpe compmax greedyll-exact unigramlm}"
+TOK_TYPES="${TOK_TYPES:-bpe topdowncomp bottomupll-exact unigramlm}"
 
 GLOBAL_BATCH_SEQS="${GLOBAL_BATCH_SEQS:-128}"   # invariant across all paper runs
 SAVE_EVERY="${SAVE_EVERY:-5000}"                # the clariden 1B runs used 2000

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Train CompMax with EXACT (context-aware) removal scoring at real scale, then
-compare against the local d[t] approximation (existing compmax-128k).
+compare against the local d[t] approximation (existing topdowncomp-128k).
 
 Exact scoring re-segments the actual corpus spans that use each token instead of
 decomposing the token's string in isolation. We realize this with rand_scoring=True
@@ -11,7 +11,7 @@ cap = all spans = exact per-word cost).
 Settings match train_compression_tokenizers.py:
   NFC + ByteLevel(add_prefix_space=False), 1M seed, prune_ratio=0.1.
 
-Output: <tokenizer-dir>/compmax_exact-{N}k/
+Output: <tokenizer-dir>/topdowncomp_exact-{N}k/
 """
 
 import os
@@ -85,7 +85,7 @@ def get_training_corpus(train_raw, batch_size=1000):
         yield train_raw[i:i + batch_size]["text"]
 
 
-def train_compmax_exact(vocab_size, corpus_iterator, sample_size):
+def train_topdowncomp_exact(vocab_size, corpus_iterator, sample_size):
     tokenizer = Tokenizer(Unigram())
     tokenizer.normalizer = NFC()
     tokenizer.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=False)
@@ -128,13 +128,13 @@ def save_tokenizer(tokenizer, output_dir: Path, name: str):
 
 def compare(tokenizer_dir: Path, vocab_size: int, raw_dir: Path):
     vk = vocab_size // 1000
-    local_path = tokenizer_dir / f"compmax-{vk}k"
-    exact_path = tokenizer_dir / f"compmax_exact-{vk}k"
+    local_path = tokenizer_dir / f"topdowncomp-{vk}k"
+    exact_path = tokenizer_dir / f"topdowncomp_exact-{vk}k"
     if not local_path.exists():
         print(f"\n[compare] {local_path} not found — skip comparison.")
         return
     print("\n" + "=" * 60)
-    print(f"COMPARE local (compmax-{vk}k) vs exact (compmax_exact-{vk}k)")
+    print(f"COMPARE local (topdowncomp-{vk}k) vs exact (topdowncomp_exact-{vk}k)")
     print("=" * 60)
     local = PreTrainedTokenizerFast.from_pretrained(str(local_path))
     exact = PreTrainedTokenizerFast.from_pretrained(str(exact_path))
@@ -175,9 +175,9 @@ def main():
     args.tokenizer_dir.mkdir(parents=True, exist_ok=True)
 
     for vocab_size in args.vocab_sizes:
-        name = f"compmax_exact-{vocab_size // 1000}k"
+        name = f"topdowncomp_exact-{vocab_size // 1000}k"
         print(f"\n{'='*50}\nTraining {name}\n{'='*50}")
-        tokenizer = train_compmax_exact(
+        tokenizer = train_topdowncomp_exact(
             vocab_size, get_training_corpus(train_raw), args.sample_size,
         )
         save_tokenizer(tokenizer, args.tokenizer_dir, name)

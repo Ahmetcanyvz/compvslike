@@ -33,7 +33,7 @@ trap requeue_handler USR1
 MODEL="${MODEL:-me1B-tied}"
 BUDGET_B="${BUDGET_B:-20}"
 read -r -a SEEDS <<< "${SEEDS:-43 44}"
-read -r -a TOKS  <<< "${TOKS:-bpe_count-128k compmax-128k greedyll-exact-128k unigramlm-128k}"
+read -r -a TOKS  <<< "${TOKS:-bpe-128k topdowncomp-128k bottomupll-exact-128k unigramlm-128k}"
 
 n_tok=${#TOKS[@]}
 SEED=${SEEDS[$((SLURM_ARRAY_TASK_ID / n_tok))]}

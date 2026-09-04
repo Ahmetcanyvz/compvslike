@@ -3,11 +3,11 @@
 # MultiBLiMP has no cmn config, so Chinese is evaluated with ZhoBLiMP instead.
 # Mirrors run_sbatch_eval_multiblimp.sh.
 #
-#   ./evaluation/run_multiblimp.sh bpe_count-multi-128k [SEED] [MODEL_SIZE]
+#   ./evaluation/run_multiblimp.sh bpe-multi-128k [SEED] [MODEL_SIZE]
 set -euo pipefail
 source "$(dirname "$0")/../env.sh"
 
-TOK_NAME="${1:?missing TOK_NAME (e.g. bpe_count-multi-128k)}"
+TOK_NAME="${1:?missing TOK_NAME (e.g. bpe-multi-128k)}"
 SEED="${2:-42}"
 MODEL_SIZE="${3:-me1B-tied}"
 BUDGET="${BUDGET:-20}"

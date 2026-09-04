@@ -32,7 +32,7 @@ comp-vs-like/
 ├── training/                   # 3. training launchers
 ├── evaluation/                 # 4. BPB and BLiMP launchers
 ├── analysis/                   #    bootstrap, seed variance, result tables
-├── slurm/                      #    SLURM wrappers for the above
+├── slurm/                      #    cluster job array (host) + containerised inner script
 └── tests/
 ```
 
@@ -122,10 +122,29 @@ rate (`prune_ratio=0.1` for TopDownComp, `shrinking_factor=0.9` for UnigramLM). 
 ### 3. Model training
 
 ```bash
+# single GPU per model, CVL_NGPU models in parallel (as used for 100M/340M/500M and 1B)
 MODELS="me340M-tied" VOCABS="128k 32k 8k" SEEDS="42 43 44" ./training/train_models.sh
-# on a cluster:
-./slurm/submit_train.sh MODELS=me1B-tied VOCABS=128k SEEDS=42
+
+# multi-GPU DDP on a SLURM cluster (as used for the 1B runs)
+MODEL=me1B-tied SEEDS="43 44" ./slurm/submit.sh
 ```
+
+The two paths are genuinely different launchers, not one script with a flag. The single-GPU path
+runs `python -m src.train` directly; the cluster path is a job array whose batch shell stays on the
+**host** (so the `USR1` auto-requeue trap can call `scontrol` ~180 s before the 12 h walltime) while
+the workload runs in the container under `torchrun`. `slurm/train_inner.sh` also pre-creates the
+`PackedTokenDataset` metadata single-process before launching, so the DDP ranks load it rather than
+racing to build it.
+
+Every run used a **global batch of 128 sequences per optimiser step**; the machines reached it
+differently, so `gradient_accumulation` is derived rather than hardcoded:
+
+| Machine  | Model | Per-device batch | Accum | GPUs | Sequences/step |
+|----------|-------|------------------|-------|------|----------------|
+| satay    | 340M  | 16               | 8     | 1    | 128            |
+| satay    | 100M  | 32               | 4     | 1    | 128            |
+| bourbon  | 1B    | 16               | 8     | 1    | 128            |
+| clariden | 1B    | 16               | 2     | 4    | 128            |
 
 Architectures (Llama-style, GQA, tied embeddings):
 
@@ -145,8 +164,12 @@ per parameter.
 ```bash
 ./evaluation/run_bpb.sh                                  # bits per byte, English test
 TEST_DATA="$CVL_RAW_MULTI/deu/test" ./evaluation/run_bpb.sh
-./evaluation/run_blimp.sh                                # BLiMP;  MULTI=1 MultiBLiMP, ZHO=1 ZhoBLiMP
+./evaluation/run_blimp.sh                                # BLiMP (English), all models
+./evaluation/run_multiblimp.sh bpe_count-multi-128k      # MultiBLiMP + ZhoBLiMP, one model
 ```
+
+`run_multiblimp.sh` loops the four MultiBLiMP languages (`eng deu spa tur`) and then runs ZhoBLiMP
+for Chinese, because MultiBLiMP has no `cmn` config.
 
 Both discover every trained model under `$CVL_OUTPUTS`, run one per GPU, and skip anything already
 evaluated, so they are safe to re-run.
@@ -173,6 +196,13 @@ the interval is over the paired difference rather than the two marginals.
 - **`bpe-*` and `bpe_count-*` are the same tokenisers.** Their vocabularies are byte-identical at
   8k, 32k and 128k; the two names are a historical duplicate. The paper's BPE baseline is
   `score_by="count"`.
+- **The paper's runs used SDPA, not FlashAttention.** Every generated config sets
+  `use_flash_attention: true`, but that flag only *requests* flash: `get_attention_implementation()`
+  returns `"flash_attention_2"` only if `flash_attn` is importable and silently falls back to
+  `"sdpa"` otherwise. `flash-attn` is an optional extra that no setup path installed
+  (`Dockerfile.clariden` does not list it, and `setup_bourbon.sh` runs a bare `uv sync`), so the
+  runs used SDPA. The configs are kept as they were; if you install `--extra flash` you will get a
+  different attention kernel than the paper did.
 - **Pin your dataset revision.** This is the one step that will silently drift; see step 1.
 
 ## Citation

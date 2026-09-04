@@ -22,6 +22,8 @@ export CVL_TOKENIZERS="${CVL_TOKENIZERS:-${CVL_ROOT}/tokenizers}"
 export CVL_DATA="${CVL_DATA:-${CVL_ROOT}/data}"
 export CVL_RAW_EN="${CVL_RAW_EN:-${CVL_DATA}/fineweb-edu-raw}"
 export CVL_RAW_MULTI="${CVL_RAW_MULTI:-${CVL_DATA}/multilingual-raw}"
+# SentencePiece seed vocabularies (ablation only).
+export CVL_SP_SEEDS="${CVL_SP_SEEDS:-${CVL_ROOT}/sp_seeds}"
 
 # Training outputs and evaluation results.
 export CVL_OUTPUTS="${CVL_OUTPUTS:-${CVL_ROOT}/outputs}"

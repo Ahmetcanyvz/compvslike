@@ -30,4 +30,7 @@ preferred-citation:
       given-names: Tiago
       affiliation: "ETH Zürich"
   year: 2026
-  notes: "Add the venue and DOI once finalised."
+  collection-title: "Proceedings of the 2026 Conference on Empirical Methods in Natural Language Processing (EMNLP)"
+  conference:
+    name: "EMNLP 2026"
+  notes: "Add pages and DOI once the proceedings are published."

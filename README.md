@@ -15,22 +15,23 @@ Existing comparisons confound the two axes. This repository fills the empty cell
 tokenisers so the axes can be varied independently, and contains everything needed to reproduce
 the paper end to end: data preparation, tokeniser training, language-model training, and evaluation.
 
-The trained tokenisers ship in `tokenizers/` (26 directories, ~130 MB), named after the paper.
+The 20 trained tokenisers used for the main results ship in `tokenizers/`, named after the paper.
 
 ## Repository layout
 
 ```
 comp-vs-like/
 ├── env.sh                      # all machine-specific paths live here
-├── tokenizers/                 #    the 26 trained tokenisers (ready to use)
+├── tokenizers/                 #    the 20 trained tokenisers (ready to use)
 ├── data_prep/                  # 1. download + tokenise the corpora
 ├── tokenizer_training/
 │   ├── fork/                   #    modified HuggingFace tokenizers (Rust) — the algorithms
-│   └── scripts/                # 2. train the tokenisers (+ ablations/)
+│   └── scripts/                # 2. train the tokenisers
 ├── src/                        # 3. model, data pipeline, training and eval CLIs
 ├── configs/models/             #    model architectures
 ├── training/                   # 3. training launchers
 ├── evaluation/                 # 4. BPB and BLiMP launchers
+├── intrinsic/                  #    tokeniser-intrinsic analysis (+ figures/)
 ├── analysis/                   #    bootstrap, seed variance, result tables
 ├── slurm/                      #    cluster job array (host) + containerised inner script
 └── tests/
@@ -49,9 +50,7 @@ Both new tokenisers are implemented in the vendored Rust fork, not in Python:
 | UnigramLM   | `unigramlm-*`         | upstream `fork/tokenizers/src/models/unigram/trainer.rs` (unmodified) |
 
 Each exists at `8k`, `32k` and `128k`, plus a `-multi-128k` variant trained on the multilingual
-corpus. The appendix ablations ship too: `topdowncomp_exact-128k`,
-`topdowncomp_gradual_{01,001}-128k`, `unigramlm_gradual_999-128k`, and the SentencePiece-seeded
-`*_sentencepiece-128k` pair.
+corpus: 20 tokenisers covering the main results.
 
 The `score_by` values keep their original spellings (`greedy_ll_exact`, `greedy_ll_approx`): those
 are the Rust API, not display names.
@@ -120,8 +119,7 @@ python tokenizer_training/scripts/train_unigram_family.py --vocab-sizes 8000 320
 ```
 
 The first trains `bpe`, `bottomupll-exact` and `bottomupll-approx`; the second trains `topdowncomp`
-and `unigramlm`. Multilingual equivalents are `train_multilingual_*.py`. Appendix ablations
-(batch-pruning rates, exact scoring, SentencePiece-seeded vocabularies) are in `scripts/ablations/`.
+and `unigramlm`. Multilingual equivalents are `train_multilingual_*.py`.
 
 All four tokenisers are trained on the same corpus with identical settings — NFC normalisation,
 byte-level pre-tokenisation without a prefix space, `max_piece_length=16`, and a matched pruning
@@ -194,6 +192,38 @@ python analysis/bpb_seed_std.py                          # mean +/- std across s
 
 `bootstrap_bpb_compare.py` resamples documents with **shared indices** across the two models, so
 the interval is over the paired difference rather than the two marginals.
+
+### 5. Intrinsic analysis
+
+Properties of the tokenisers themselves, independent of any trained model. All of these read
+`intrinsic/config.py`, which resolves tokeniser and corpus paths from the same `CVL_*` variables:
+
+```bash
+python intrinsic/compression_stats.py        # bytes per token, fertility
+python intrinsic/token_length_dist.py        # token length distribution
+python intrinsic/zipf_and_entropy.py         # Zipf alpha, Shannon entropy, coverage
+python intrinsic/vocab_differences.py        # vocabulary comparison across methods
+python intrinsic/merge_overlap.py            # merge overlap and ordering (bottom-up methods only)
+python intrinsic/absorbed_tokens.py          # tokens absorbed by later merges
+python intrinsic/absorbed_zero_usage.py      # absorbed tokens with zero usage on held-out text
+python intrinsic/tokenization_examples.py    # qualitative side-by-side segmentations
+python intrinsic/multi_bytes.py              # UTF-8 byte counts for the multilingual test sets
+
+CVL_VARIANT=multi python intrinsic/compression_stats.py   # multilingual tokenisers
+```
+
+The two figures in the paper:
+
+```bash
+python intrinsic/figures/zipf_curves.py -o zipf_curves.pdf
+python intrinsic/figures/vocab_overlap_heatmap.py -o vocab_overlap_heatmap.pdf
+```
+
+The heatmap needs only the shipped tokenisers, so it runs immediately after cloning and reproduces
+the block structure the paper reports: overlap within a search family (BPE / BottomUpLL 82-94%,
+TopDownComp / UnigramLM 61%) is far higher than across families (41-50%). `zipf_curves.py`
+additionally needs the raw English test split and caches its token counts under
+`intrinsic/_counts_cache/`.
 
 ## Reproducibility notes
 

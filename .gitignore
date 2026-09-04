@@ -20,8 +20,8 @@ data/
 outputs/
 eval_results/
 logs/
-sp_seeds/
 configs/generated/
+intrinsic/_counts_cache/
 *.ckpt
 *.parquet
 *.npy

@@ -1,0 +1,41 @@
+comp-vs-like
+============
+
+This repository is distributed under the MIT License (see LICENSE), with one
+exception described below.
+
+Third-party code
+----------------
+
+`tokenizer_training/fork/` is a modified copy of HuggingFace `tokenizers`:
+
+    https://github.com/huggingface/tokenizers
+    Copyright 2018- The HuggingFace Inc. team.
+    Licensed under the Apache License, Version 2.0.
+
+That subtree remains under the Apache License 2.0; its licence text is kept at
+`tokenizer_training/fork/LICENSE`. You may not use those files except in
+compliance with that licence.
+
+Modifications made by the authors of this repository
+----------------------------------------------------
+
+1. `tokenizers/src/models/bpe/trainer.rs`
+   Adds likelihood-based merge scoring to the bottom-up BPE trainer, selectable
+   via `score_by`:
+     * `count`             - standard BPE (most frequent pair); the paper's BPE
+     * `greedy_ll_exact`   - exact change in corpus log-likelihood
+     * `greedy_ll_approx`  - first-order approximation, n_bc * (PMI - 1)
+   This is the paper's BottomUpLL tokeniser.
+
+2. `tokenizers/src/models/unigram/compression_trainer.rs`
+   New `CompressionTrainer`: top-down pruning that maximises compression rather
+   than likelihood. This is the paper's TopDownComp tokeniser.
+
+3. `tokenizers/src/models/unigram/trainer.rs`
+   Adds an optional `seed_vocab` so training can start from a supplied
+   vocabulary instead of the suffix-array seeding step (used for the
+   SentencePiece-seeded ablation).
+
+4. `bindings/python/src/trainers.rs`, `bindings/python/src/models.rs`
+   Python bindings for the above, plus optional training telemetry.

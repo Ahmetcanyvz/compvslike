@@ -1,0 +1,16 @@
+# ~500M parameter model with tied embeddings
+name: me500M-tied
+model_type: llama
+hidden_act: silu
+hidden_size: 1280
+intermediate_size: 3456
+num_attention_heads: 16
+num_key_value_heads: 4
+num_hidden_layers: 26
+tie_word_embeddings: true
+initializer_range: 0.02
+attention_bias: false
+attention_dropout: 0.0
+mlp_bias: false
+rms_norm_eps: 1.0e-5
+rope_theta: 10000.0

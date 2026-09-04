@@ -1,0 +1,35 @@
+# Machine-specific configuration
+env.local.sh
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.uv_cache/
+
+# Rust (vendored fork build output)
+tokenizer_training/fork/**/target/
+tokenizer_training/fork/**/Cargo.lock
+
+# Data, checkpoints, results: too large for git, regenerate with the pipeline
+data/
+outputs/
+eval_results/
+logs/
+sp_seeds/
+configs/generated/
+*.ckpt
+*.parquet
+*.npy
+*.arrow
+
+# Notebook / editor / OS noise
+.ipynb_checkpoints/
+.idea/
+.vscode/
+*.swp
+.DS_Store
